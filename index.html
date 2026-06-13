@@ -1,48 +1,428 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <title>Chia và ghép file</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Chunker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f14;
+      --surface:   #151820;
+      --panel:     #1c2030;
+      --border:    #2a2f42;
+      --accent:    #4f7cff;
+      --accent2:   #7c5cfc;
+      --success:   #34d399;
+      --text:      #e4e8f7;
+      --muted:     #6b7494;
+      --chunk-bg:  #11141d;
+      --radius:    10px;
+      --font:      'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      max-width: 860px;
+      margin-bottom: 36px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header .logo {
+      width: 42px; height: 42px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    header p {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Drop zone ── */
+    .dropzone {
+      width: 100%;
+      max-width: 860px;
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+      margin-bottom: 40px;
+      background: var(--surface);
+    }
+    .dropzone:hover, .dropzone.drag-over {
+      border-color: var(--accent);
+      background: #1a1f31;
+    }
+    .dropzone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .dropzone .icon { font-size: 2.4rem; margin-bottom: 12px; display: block; }
+    .dropzone .label {
+      font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 6px;
+    }
+    .dropzone .sublabel { font-size: 0.82rem; color: var(--muted); }
+    .dropzone .sublabel span {
+      color: var(--accent); font-weight: 600; text-decoration: underline;
+    }
+
+    /* ── File list section ── */
+    .section-title {
+      width: 100%; max-width: 860px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-title::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    #file-list {
+      width: 100%; max-width: 860px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    /* ── File card ── */
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .file-card:hover { border-color: #3a4060; }
+
+    .file-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .file-header .file-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, #1e2a50, #253060);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; flex-shrink: 0;
+    }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-size: 0.95rem; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-meta {
+      margin-top: 4px;
+      display: flex; flex-wrap: wrap; gap: 10px;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    .file-meta .badge {
+      background: var(--panel);
+      padding: 2px 8px; border-radius: 20px;
+      font-size: 0.72rem; font-weight: 600; color: var(--accent);
+      border: 1px solid var(--border);
+    }
+    .file-actions {
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    }
+    .btn-dl-full {
+      display: flex; align-items: center; gap: 6px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: none; border-radius: 7px;
+      padding: 7px 14px;
+      font-size: 0.78rem; font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      white-space: nowrap;
+    }
+    .btn-dl-full:hover { opacity: .88; }
+    .btn-dl-full:active { transform: scale(.97); }
+    .chevron {
+      font-size: 1rem; color: var(--muted);
+      transition: transform .25s;
+      line-height: 1;
+    }
+    .file-card.open .chevron { transform: rotate(90deg); }
+
+    /* ── Chunk list ── */
+    .chunk-list {
+      display: none;
+      border-top: 1px solid var(--border);
+    }
+    .file-card.open .chunk-list { display: block; }
+
+    .chunk-list-header {
+      display: grid;
+      grid-template-columns: 1fr 90px 90px;
+      gap: 8px;
+      padding: 10px 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      background: var(--chunk-bg);
+    }
+    .chunk-row {
+      display: grid;
+      grid-template-columns: 1fr 90px 90px;
+      gap: 8px;
+      align-items: center;
+      padding: 11px 20px;
+      background: var(--chunk-bg);
+      border-bottom: 1px solid #1a1e2a;
+      transition: background .15s;
+    }
+    .chunk-row:last-child { border-bottom: none; }
+    .chunk-row:hover { background: #13172100; }
+    .chunk-name {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.83rem; font-family: 'Cascadia Code', 'Consolas', monospace;
+      color: #a8b4e8; overflow: hidden;
+    }
+    .chunk-name .part-icon { color: var(--muted); font-size: 0.8rem; }
+    .chunk-size {
+      font-size: 0.78rem; color: var(--muted); text-align: right;
+    }
+    .btn-dl-chunk {
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+      background: var(--panel);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.74rem; font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .btn-dl-chunk:hover {
+      background: #1e2640;
+      border-color: var(--accent);
+    }
+
+    /* ── Empty state ── */
+    #empty-state {
+      width: 100%; max-width: 860px;
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    @media (max-width: 560px) {
+      .file-header { padding: 13px 14px; gap: 10px; }
+      .chunk-list-header, .chunk-row { padding: 10px 14px; }
+      .chunk-list-header { grid-template-columns: 1fr 70px 72px; }
+      .chunk-row { grid-template-columns: 1fr 70px 72px; }
+      .btn-dl-full { padding: 6px 10px; font-size: 0.73rem; }
+      header h1 { font-size: 1.2rem; }
+    }
+  </style>
 </head>
 <body>
 
-<input type="file" id="fileInput">
+<header>
+  <div class="logo">✂️</div>
+  <div>
+    <h1>File Chunker</h1>
+    <p>Chia file thành các chunk 5MB — không cần backend</p>
+  </div>
+</header>
+
+<div class="dropzone" id="dropzone">
+  <input type="file" id="file-input" multiple />
+  <span class="icon">📂</span>
+  <div class="label">Kéo & thả file vào đây</div>
+  <div class="sublabel">hoặc <span>chọn file</span> từ máy tính · Hỗ trợ nhiều file</div>
+</div>
+
+<div class="section-title" id="list-title" style="display:none">Danh sách file đã upload</div>
+
+<div id="file-list"></div>
+
+<div id="empty-state">Chưa có file nào được upload.</div>
 
 <script>
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+  const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
 
-document.getElementById("fileInput").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
+  const dropzone   = document.getElementById('dropzone');
+  const fileInput  = document.getElementById('file-input');
+  const fileList   = document.getElementById('file-list');
+  const emptyState = document.getElementById('empty-state');
+  const listTitle  = document.getElementById('list-title');
 
-    if (!file) return;
+  // ── Drag-over highlight ──
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    handleFiles([...e.dataTransfer.files]);
+  });
+  fileInput.addEventListener('change', e => { handleFiles([...e.target.files]); fileInput.value = ''; });
 
-    // Chia file
+  // ── Helpers ──
+  function fmtSize(bytes) {
+    if (bytes < 1024)           return bytes + ' B';
+    if (bytes < 1024 * 1024)    return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+  }
+
+  function fmtDate(d) {
+    return d.toLocaleDateString('vi-VN') + ' ' +
+           d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function fileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    const map = {
+      pdf:'📄', zip:'🗜️', rar:'🗜️', '7z':'🗜️',
+      mp4:'🎬', mkv:'🎬', avi:'🎬', mov:'🎬',
+      mp3:'🎵', wav:'🎵', flac:'🎵',
+      jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️', webp:'🖼️',
+      doc:'📝', docx:'📝', xls:'📊', xlsx:'📊', ppt:'📋', pptx:'📋',
+      txt:'📃', json:'🔧', js:'🔧', html:'🌐', css:'🎨',
+      exe:'⚙️', dmg:'⚙️', apk:'📱',
+    };
+    return map[ext] || '📦';
+  }
+
+  // ── Core ──
+  function handleFiles(files) {
+    if (!files.length) return;
+    listTitle.style.display = '';
+    emptyState.style.display = 'none';
+
+    files.forEach(file => buildCard(file));
+  }
+
+  function buildCard(file) {
     const chunks = [];
-
-    for (let start = 0; start < file.size; start += CHUNK_SIZE) {
-        chunks.push(file.slice(start, start + CHUNK_SIZE));
+    let offset = 0, index = 1;
+    while (offset < file.size) {
+      const blob = file.slice(offset, offset + CHUNK_SIZE);
+      chunks.push({ blob, name: `${file.name}.part${index}`, size: blob.size });
+      offset += CHUNK_SIZE;
+      index++;
     }
 
-    console.log(`Đã chia thành ${chunks.length} phần`);
+    const card = document.createElement('div');
+    card.className = 'file-card';
 
-    // Ghép lại
-    const mergedFile = new Blob(chunks, {
-        type: file.type
+    // Header
+    const header = document.createElement('div');
+    header.className = 'file-header';
+    header.innerHTML = `
+      <div class="file-icon">${fileIcon(file.name)}</div>
+      <div class="file-info">
+        <div class="file-name" title="${escHtml(file.name)}">${escHtml(file.name)}</div>
+        <div class="file-meta">
+          <span>${fmtSize(file.size)}</span>
+          <span class="badge">${chunks.length} chunk${chunks.length > 1 ? 's' : ''}</span>
+          <span>${fmtDate(new Date())}</span>
+        </div>
+      </div>
+      <div class="file-actions">
+        <button class="btn-dl-full" title="Tải toàn bộ file gốc">⬇ Download Full</button>
+        <span class="chevron">›</span>
+      </div>
+    `;
+
+    // Toggle open/close
+    header.addEventListener('click', e => {
+      if (e.target.closest('.btn-dl-full')) return;
+      card.classList.toggle('open');
     });
 
-    // Tự động tải về
-    const url = URL.createObjectURL(mergedFile);
+    // Download Full
+    header.querySelector('.btn-dl-full').addEventListener('click', () => {
+      const merged = new Blob(chunks.map(c => c.blob), { type: file.type || 'application/octet-stream' });
+      triggerDownload(merged, file.name);
+    });
 
-    const a = document.createElement("a");
+    // Chunk list
+    const chunkList = document.createElement('div');
+    chunkList.className = 'chunk-list';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'chunk-list-header';
+    hdr.innerHTML = '<span>Tên chunk</span><span style="text-align:right">Kích thước</span><span></span>';
+    chunkList.appendChild(hdr);
+
+    chunks.forEach(chunk => {
+      const row = document.createElement('div');
+      row.className = 'chunk-row';
+      row.innerHTML = `
+        <div class="chunk-name"><span class="part-icon">⬤</span>${escHtml(chunk.name)}</div>
+        <div class="chunk-size">${fmtSize(chunk.size)}</div>
+        <div></div>
+      `;
+      const btn = document.createElement('button');
+      btn.className = 'btn-dl-chunk';
+      btn.innerHTML = '⬇ Tải';
+      btn.addEventListener('click', () => triggerDownload(chunk.blob, chunk.name));
+      row.children[2].appendChild(btn);
+      chunkList.appendChild(row);
+    });
+
+    card.appendChild(header);
+    card.appendChild(chunkList);
+    card.classList.add('open'); // expand by default
+    fileList.prepend(card);
+  }
+
+  function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     a.href = url;
-    a.download = file.name;
-
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
-    a.remove();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
 
-    URL.revokeObjectURL(url);
-});
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 </script>
 
 </body>
