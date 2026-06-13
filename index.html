@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Chia và ghép file</title>
+</head>
+<body>
+
+<input type="file" id="fileInput">
+
+<script>
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+
+    if (!file) return;
+
+    // Chia file
+    const chunks = [];
+
+    for (let start = 0; start < file.size; start += CHUNK_SIZE) {
+        chunks.push(file.slice(start, start + CHUNK_SIZE));
+    }
+
+    console.log(`Đã chia thành ${chunks.length} phần`);
+
+    // Ghép lại
+    const mergedFile = new Blob(chunks, {
+        type: file.type
+    });
+
+    // Tự động tải về
+    const url = URL.createObjectURL(mergedFile);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>
