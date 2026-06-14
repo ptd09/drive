@@ -375,49 +375,81 @@ async function runUploadLoop() {
  */
 async function uploadPart(blob, meta) {
 
-    const headers = {
-        "Authorization": AUTH_HEADER,
-        "Content-Type": "application/octet-stream",
-        "X-File-Name": encodeURIComponent(meta.fileName),
-        "X-File-Size": String(meta.fileSize),
-        "X-Part-Index": String(meta.partIndex),
-        "X-Part-Count": String(meta.totalParts),
-        "X-Mime-Type": meta.mimeType || "application/octet-stream"
-    };
-
-    if (meta.fileId) {
-        headers["X-File-Id"] = meta.fileId;
-    }
-
     const form = new FormData();
 
-form.append(
-    "file",
-    new File(
-        [blob],
-        `${meta.fileName}.part${meta.partIndex}`,
-        {
-            type: "application/octet-stream"
-        }
-    )
-);
+    form.append(
+        "file",
+        new File(
+            [blob],
+            `${meta.fileName}.part${meta.partIndex}`,
+            {
+                type: meta.mimeType || "application/octet-stream"
+            }
+        )
+    );
 
-const response = await fetch(
-    API + "/upload",
-    {
-        method: "POST",
-        body: form
+    form.append(
+        "original_name",
+        meta.fileName
+    );
+
+    form.append(
+        "original_size",
+        String(meta.fileSize)
+    );
+
+    form.append(
+        "part_index",
+        String(meta.partIndex)
+    );
+
+    form.append(
+        "part_count",
+        String(meta.totalParts)
+    );
+
+    form.append(
+        "mime_type",
+        meta.mimeType || "application/octet-stream"
+    );
+
+    if (meta.fileId) {
+
+        form.append(
+            "file_id",
+            meta.fileId
+        );
+
     }
-);
+
+    const response = await fetch(
+        API + "/upload",
+        {
+            method: "POST",
+            headers: {
+                Authorization: AUTH_HEADER
+            },
+            body: form
+        }
+    );
 
     if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP ${response.status}`);
+
+        const errData =
+        await response
+            .json()
+            .catch(() => ({}));
+
+        throw new Error(
+            errData.error ||
+            `HTTP ${response.status}`
+        );
+
     }
 
     return response.json();
-}
 
+}
 function updateUploadUI(partIndex, totalParts) {
     const percent = Math.round(((partIndex - 1) / totalParts) * 100);
 
