@@ -2,42 +2,49 @@ const PASSWORD = "140613";
 
 const API = "https://drive-worker.phamdatt140613.workers.dev";
 
-const loginPage = document.getElementById("login-page");
-const dashboard = document.getElementById("dashboard");
+const loginPage = document.querySelector("#login-page");
+const dashboard = document.querySelector("#dashboard");
 
 const loginForm = document.querySelector(".login-form");
+const passwordInput = document.querySelector(".password-input");
 
+const uploadBtn = document.querySelector(".upload-btn");
 const uploadInput = document.querySelector(".input-file");
 
-const fileTable = document.querySelector(".file-list tbody");
+const logoutBtn = document.querySelector(".logout-btn");
 
-const totalFiles = document.querySelectorAll(".stat-card p")[0];
-const totalSize = document.querySelectorAll(".stat-card p")[1];
+const fileTableBody = document.querySelector(".file-table-body");
+const partTableBody = document.querySelector(".part-table-body");
 
-const uploadProgress = document.querySelector(
-".upload-manager .progress-bar"
-);
+const totalFiles = document.querySelector(".total-files");
+const totalSize = document.querySelector(".total-size");
+const usedSize = document.querySelector(".used-size");
 
-const uploadText = document.querySelector(
-".upload-manager p:last-child"
-);
+const uploadProgressBar = document.querySelector(".upload-progress-bar");
+const uploadProgressText = document.querySelector(".upload-progress-text");
 
-const activityLog = document.querySelector(
-".log-list"
-);
+const managerUploadBar = document.querySelector(".manager-upload-progress-bar");
+const uploadStatus = document.querySelector(".upload-status");
+
+const downloadProgressBar = document.querySelector(".download-progress-bar");
+const downloadStatus = document.querySelector(".download-status");
+
+const detailId = document.querySelector(".detail-id");
+const detailName = document.querySelector(".detail-name");
+const detailSize = document.querySelector(".detail-size");
+const detailParts = document.querySelector(".detail-parts");
+const detailStatus = document.querySelector(".detail-status");
+
+const logList = document.querySelector(".log-list");
 
 init();
 
 function init() {
 
     if (localStorage.getItem("drive_auth") === "1") {
-
         showDashboard();
-
     } else {
-
         showLogin();
-
     }
 
 }
@@ -45,7 +52,6 @@ function init() {
 function showLogin() {
 
     loginPage.style.display = "flex";
-
     dashboard.style.display = "none";
 
 }
@@ -53,28 +59,21 @@ function showLogin() {
 function showDashboard() {
 
     loginPage.style.display = "none";
-
     dashboard.style.display = "block";
 
     loadFiles();
 
 }
 
-loginForm.addEventListener(
-"submit",
-e => {
+loginForm.addEventListener("submit", e => {
 
     e.preventDefault();
 
-    const pass =
-    document.querySelector(".input").value;
+    const pass = passwordInput.value.trim();
 
     if (pass === PASSWORD) {
 
-        localStorage.setItem(
-        "drive_auth",
-        "1"
-        );
+        localStorage.setItem("drive_auth", "1");
 
         showDashboard();
 
@@ -84,107 +83,21 @@ e => {
 
     }
 
-}
-);
+});
 
-async function loadFiles() {
+logoutBtn.addEventListener("click", () => {
 
-    try {
+    localStorage.removeItem("drive_auth");
 
-        const res = await fetch(
-        API + "/files"
-        );
+    location.reload();
 
-        const files =
-        await res.json();
+});
 
-        renderFiles(files);
-
-    } catch (err) {
-
-        console.error(err);
-
-    }
-
-}
-
-function renderFiles(files) {
-
-    fileTable.innerHTML = "";
-
-    let totalBytes = 0;
-
-    files.reverse();
-
-    files.forEach(file => {
-
-        totalBytes += file.size;
-
-        const tr =
-        document.createElement("tr");
-
-        tr.innerHTML = `
-
-        <td>${file.id}</td>
-
-        <td>${file.name}</td>
-
-        <td>${formatSize(file.size)}</td>
-
-        <td>1</td>
-
-        <td>
-        ${new Date(
-        file.created_at
-        ).toLocaleString()}
-        </td>
-
-        <td>
-        <span class="badge badge-success">
-        ${file.status}
-        </span>
-        </td>
-
-        <td class="actions">
-
-        <button
-        class="btn btn-success"
-        onclick="downloadFile(
-        '${file.file_id}'
-        )"
-        >
-        Download
-        </button>
-
-        <button
-        class="btn btn-danger"
-        onclick="deleteFile(
-        '${file.id}'
-        )"
-        >
-        Delete
-        </button>
-
-        </td>
-
-        `;
-
-        fileTable.appendChild(tr);
-
-    });
-
-    totalFiles.textContent =
-    files.length;
-
-    totalSize.textContent =
-    formatSize(totalBytes);
-
-}
+uploadBtn.addEventListener("click", uploadFile);
 
 async function uploadFile() {
 
-    const file =
-    uploadInput.files[0];
+    const file = uploadInput.files[0];
 
     if (!file) {
 
@@ -194,103 +107,228 @@ async function uploadFile() {
 
     }
 
-    const form =
-    new FormData();
-
-    form.append(
-    "file",
-    file
-    );
-
-    uploadProgress.style.width =
-    "20%";
-
-    uploadText.textContent =
-    "Đang upload...";
-
     try {
 
-        const res =
-        await fetch(
-        API + "/upload",
-        {
-            method: "POST",
-            body: form
-        }
+        uploadProgressBar.style.width = "20%";
+        uploadProgressText.textContent = "Đang upload...";
+        managerUploadBar.style.width = "20%";
+        uploadStatus.textContent = "Đang upload...";
+
+        const form = new FormData();
+
+        form.append("file", file);
+
+        const response = await fetch(
+            API + "/upload",
+            {
+                method: "POST",
+                body: form
+            }
         );
 
-        const data =
-        await res.json();
+        const data = await response.json();
 
-        console.log(data);
+        uploadProgressBar.style.width = "100%";
+        managerUploadBar.style.width = "100%";
 
-        uploadProgress.style.width =
-        "100%";
+        uploadProgressText.textContent = "100%";
+        uploadStatus.textContent = "Hoàn tất";
 
-        uploadText.textContent =
-        "Upload hoàn tất";
-
-        addLog(
-        "Upload " +
-        data.name
-        );
+        addLog("Upload: " + file.name);
 
         loadFiles();
 
-    } catch (err) {
+    } catch (error) {
 
-        console.error(err);
+        console.error(error);
 
-        uploadText.textContent =
-        "Upload lỗi";
+        uploadStatus.textContent = "Lỗi upload";
+
+        addLog("Upload lỗi");
 
     }
 
 }
 
-async function deleteFile(id) {
-
-    const ok =
-    confirm(
-    "Xóa file?"
-    );
-
-    if (!ok)
-    return;
+async function loadFiles() {
 
     try {
 
-        await fetch(
-        API +
-        "/file/" +
-        id,
-        {
-            method: "DELETE"
-        }
+        const response = await fetch(
+            API + "/files"
         );
 
-        addLog(
-        "Delete " + id
-        );
+        const files = await response.json();
 
-        loadFiles();
+        renderFiles(files);
 
-    } catch (err) {
+    } catch (error) {
 
-        console.error(err);
+        console.error(error);
+
+        addLog("Không tải được danh sách file");
 
     }
 
 }
 
-function downloadFile(fileId) {
+function renderFiles(files) {
+
+    fileTableBody.innerHTML = "";
+
+    let totalBytes = 0;
+
+    files.forEach(file => {
+
+        totalBytes += Number(file.size || 0);
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+        <td>${file.id || "-"}</td>
+        <td>${file.name || "-"}</td>
+        <td>${formatSize(file.size || 0)}</td>
+        <td>${file.part_count || 1}</td>
+        <td>${formatDate(file.created_at)}</td>
+        <td>
+            <span class="badge badge-success">
+                ${file.status || "uploaded"}
+            </span>
+        </td>
+        <td class="actions">
+
+            <button
+                class="btn btn-secondary"
+                onclick="showDetails('${file.id}')"
+            >
+                Details
+            </button>
+
+            <button
+                class="btn btn-success"
+                onclick="downloadFile('${file.id}')"
+            >
+                Download
+            </button>
+
+            <button
+                class="btn btn-danger"
+                onclick="deleteFile('${file.id}')"
+            >
+                Delete
+            </button>
+
+        </td>
+        `;
+
+        fileTableBody.appendChild(tr);
+
+    });
+
+    totalFiles.textContent = files.length;
+
+    totalSize.textContent = formatSize(totalBytes);
+
+    usedSize.textContent = formatSize(totalBytes);
+
+}
+
+window.showDetails = async function(id) {
+
+    try {
+
+        const response = await fetch(
+            API + "/file/" + id
+        );
+
+        const file = await response.json();
+
+        detailId.textContent =
+        "ID: " + (file.id || "-");
+
+        detailName.textContent =
+        "Tên: " + (file.name || "-");
+
+        detailSize.textContent =
+        "Dung lượng: " +
+        formatSize(file.size || 0);
+
+        detailParts.textContent =
+        "Part Count: " +
+        (file.part_count || 1);
+
+        detailStatus.textContent =
+        "Trạng thái: " +
+        (file.status || "-");
+
+        partTableBody.innerHTML = "";
+
+        if (Array.isArray(file.parts)) {
+
+            file.parts.forEach(part => {
+
+                const row =
+                document.createElement("tr");
+
+                row.innerHTML = `
+                <td>${part.index}</td>
+                <td>${part.name}</td>
+                <td>${part.file_id}</td>
+                <td>${part.message_id}</td>
+                `;
+
+                partTableBody.appendChild(row);
+
+            });
+
+        }
+
+    } catch (error) {
+
+        console.error(error);
+
+    }
+
+};
+
+window.deleteFile = async function(id) {
+
+    const ok = confirm(
+        "Xóa file?"
+    );
+
+    if (!ok) return;
+
+    try {
+
+        await fetch(
+            API + "/file/" + id,
+            {
+                method: "DELETE"
+            }
+        );
+
+        addLog("Delete: " + id);
+
+        loadFiles();
+
+    } catch (error) {
+
+        console.error(error);
+
+    }
+
+};
+
+window.downloadFile = function(id) {
+
+    addLog("Download: " + id);
 
     alert(
-    "Download API chưa làm\n\n" +
-    fileId
+        "Chưa có API download\nID: " + id
     );
 
-}
+};
 
 function addLog(text) {
 
@@ -301,79 +339,47 @@ function addLog(text) {
     "log-item";
 
     li.textContent =
-    new Date()
-    .toLocaleTimeString()
-    + " - " +
+    new Date().toLocaleTimeString() +
+    " - " +
     text;
 
-    activityLog.prepend(li);
+    logList.prepend(li);
 
 }
 
 function formatSize(bytes) {
 
-    if (
-    bytes < 1024
-    ) {
+    bytes = Number(bytes || 0);
+
+    if (bytes < 1024)
         return bytes + " B";
-    }
 
-    if (
-    bytes <
-    1024 * 1024
-    ) {
+    if (bytes < 1024 * 1024)
         return (
-        bytes / 1024
-        ).toFixed(2)
-        + " KB";
-    }
+            bytes / 1024
+        ).toFixed(2) + " KB";
 
-    if (
-    bytes <
-    1024 *
-    1024 *
-    1024
-    ) {
+    if (bytes < 1024 * 1024 * 1024)
         return (
-        bytes /
-        1024 /
-        1024
-        ).toFixed(2)
-        + " MB";
-    }
+            bytes / 1024 / 1024
+        ).toFixed(2) + " MB";
 
     return (
-    bytes /
-    1024 /
-    1024 /
-    1024
-    ).toFixed(2)
-    + " GB";
+        bytes /
+        1024 /
+        1024 /
+        1024
+    ).toFixed(2) + " GB";
 
 }
 
-document
-.querySelector(
-".upload-section .btn-primary"
-)
-.addEventListener(
-"click",
-uploadFile
-);
+function formatDate(timestamp) {
 
-document
-.querySelector(
-".header .btn-danger"
-)
-.addEventListener(
-"click",
-() => {
+    if (!timestamp)
+        return "-";
 
-    localStorage.removeItem(
-    "drive_auth"
-    );
-
-    location.reload();
+    return new Date(
+        timestamp
+    ).toLocaleString();
 
 }
-);
