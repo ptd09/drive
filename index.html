@@ -1,304 +1,264 @@
-<body class="app">
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Drive</title>
+</head>
+<body>
 
-<section id="login-page" class="login-page">
+    <!-- LOGIN -->
+    <section id="login-page">
 
-<div class="login-card">
+        <h1>Telegram Drive</h1>
 
-<h1 class="logo">Telegram Drive</h1>
+        <p>Nhập khóa để mở kho lưu trữ</p>
 
-<p class="subtitle">
-Nhập khóa để mở kho lưu trữ
-</p>
+        <form>
+            <input
+                type="password"
+                placeholder="Nhập khóa"
+                required
+            >
 
-<form class="login-form">
+            <button type="submit">
+                Mở Kho
+            </button>
+        </form>
 
-<input
-class="input"
-type="password"
-placeholder="Nhập khóa"
-required
->
+    </section>
 
-<button
-class="btn btn-primary"
-type="submit"
->
-Mở Kho
-</button>
+    <!-- DASHBOARD -->
+    <section id="dashboard">
 
-</form>
+        <header>
 
-</div>
+            <h1>Telegram Drive</h1>
 
-</section>
+            <button>
+                Đăng Xuất
+            </button>
 
-<section id="dashboard" class="dashboard">
+        </header>
 
-<header class="header">
+        <hr>
 
-<h1 class="header-title">
-Telegram Drive
-</h1>
+        <!-- THỐNG KÊ -->
+        <section id="storage-overview">
 
-<button class="btn btn-danger">
-Đăng Xuất
-</button>
+            <h2>Tổng Quan</h2>
 
-</header>
+            <p>Tổng File: 0</p>
 
-<section class="stats">
+            <p>Tổng Dung Lượng: 0 GB</p>
 
-<div class="stat-card">
-<h3>Tổng File</h3>
-<p>0</p>
-</div>
+            <p>Đã Sử Dụng: 0 GB</p>
 
-<div class="stat-card">
-<h3>Tổng Dung Lượng</h3>
-<p>0 GB</p>
-</div>
+        </section>
 
-<div class="stat-card">
-<h3>Đã Sử Dụng</h3>
-<p>0 GB</p>
-</div>
+        <hr>
 
-</section>
+        <!-- UPLOAD -->
+        <section id="upload-section">
 
-<section class="upload-section">
+            <h2>Upload File</h2>
 
-<h2 class="section-title">
-Upload File
-</h2>
+            <input type="file">
 
-<div class="upload-box">
+            <button>
+                Upload
+            </button>
 
-<input
-class="input-file"
-type="file"
->
+            <p>Tiến độ upload: 0%</p>
 
-<button
-class="btn btn-primary"
->
-Upload
-</button>
+        </section>
 
-</div>
+        <hr>
 
-<div class="progress">
+        <!-- DANH SÁCH FILE -->
+        <section id="file-list">
 
-<div class="progress-bar"></div>
+            <h2>Danh Sách File</h2>
 
-</div>
+            <table border="1">
 
-<p class="progress-text">
-0%
-</p>
+                <thead>
 
-</section>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tên File</th>
+                        <th>Dung Lượng</th>
+                        <th>Số Part</th>
+                        <th>Ngày Tạo</th>
+                        <th>Trạng Thái</th>
+                        <th>Thao Tác</th>
+                    </tr>
 
-<section class="file-list">
+                </thead>
 
-<h2 class="section-title">
-Danh Sách File
-</h2>
+                <tbody>
 
-<div class="table-wrapper">
+                    <tr>
 
-<table class="table">
+                        <td>abc123</td>
 
-<thead>
+                        <td>movie.mkv</td>
 
-<tr>
-<th>ID</th>
-<th>Tên</th>
-<th>Dung Lượng</th>
-<th>Part</th>
-<th>Ngày</th>
-<th>Trạng Thái</th>
-<th>Thao Tác</th>
-</tr>
+                        <td>10 GB</td>
 
-</thead>
+                        <td>40</td>
 
-<tbody>
+                        <td>14/06/2026</td>
 
-<tr>
+                        <td>uploaded</td>
 
-<td>abc123</td>
+                        <td>
 
-<td>movie.mkv</td>
+                            <button>
+                                Download
+                            </button>
 
-<td>10GB</td>
+                            <button>
+                                Delete
+                            </button>
 
-<td>40</td>
+                            <button>
+                                Details
+                            </button>
 
-<td>14/06/2026</td>
+                        </td>
 
-<td>
+                    </tr>
 
-<span class="badge badge-success">
-uploaded
-</span>
+                </tbody>
 
-</td>
+            </table>
 
-<td class="actions">
+        </section>
 
-<button
-class="btn btn-success"
->
-Download
-</button>
+        <hr>
 
-<button
-class="btn btn-danger"
->
-Delete
-</button>
+        <!-- CHI TIẾT FILE -->
+        <section id="file-details">
 
-<button
-class="btn btn-secondary"
->
-Details
-</button>
+            <h2>Chi Tiết File</h2>
 
-</td>
+            <p>ID: abc123</p>
 
-</tr>
+            <p>Tên: movie.mkv</p>
 
-</tbody>
+            <p>Dung lượng: 10 GB</p>
 
-</table>
+            <p>Part Count: 40</p>
 
-</div>
+            <p>Trạng thái: uploaded</p>
 
-</section>
+            <p>Ngày tạo: 14/06/2026</p>
 
-<section class="details">
+        </section>
 
-<h2 class="section-title">
-Chi Tiết File
-</h2>
+        <hr>
 
-<div class="details-card">
+        <!-- DANH SÁCH PART -->
+        <section id="part-list">
 
-<p>ID: abc123</p>
-<p>Tên: movie.mkv</p>
-<p>Dung lượng: 10GB</p>
-<p>Part Count: 40</p>
-<p>Trạng thái: uploaded</p>
+            <h2>Danh Sách Part</h2>
 
-</div>
+            <table border="1">
 
-</section>
+                <thead>
 
-<section class="part-list">
+                    <tr>
+                        <th>Part</th>
+                        <th>Tên</th>
+                        <th>File ID</th>
+                        <th>Message ID</th>
+                    </tr>
 
-<h2 class="section-title">
-Danh Sách Part
-</h2>
+                </thead>
 
-<div class="table-wrapper">
+                <tbody>
 
-<table class="table">
+                    <tr>
 
-<thead>
+                        <td>1</td>
 
-<tr>
-<th>Part</th>
-<th>Tên</th>
-<th>File ID</th>
-<th>Message ID</th>
-</tr>
+                        <td>movie.part001.mkv</td>
 
-</thead>
+                        <td>file_id_here</td>
 
-<tbody>
+                        <td>100</td>
 
-<tr>
+                    </tr>
 
-<td>1</td>
+                </tbody>
 
-<td>movie.part001.mkv</td>
+            </table>
 
-<td>xxxxx</td>
+        </section>
 
-<td>100</td>
+        <hr>
 
-</tr>
+        <!-- DOWNLOAD -->
+        <section id="download-manager">
 
-</tbody>
+            <h2>Download Manager</h2>
 
-</table>
+            <p>Trạng thái: Chưa tải</p>
 
-</div>
+            <p>Tiến độ: 0%</p>
 
-</section>
+            <button>
+                Tiếp Tục Download
+            </button>
 
-<section class="download-manager">
+            <button>
+                Hủy Download
+            </button>
 
-<h2 class="section-title">
-Download Manager
-</h2>
+        </section>
 
-<div class="manager-card">
+        <hr>
 
-<p>Tiến độ: 0%</p>
+        <!-- UPLOAD MANAGER -->
+        <section id="upload-manager">
 
-<div class="progress">
+            <h2>Upload Manager</h2>
 
-<div class="progress-bar"></div>
+            <p>File hiện tại: Không có</p>
 
-</div>
+            <p>Part hiện tại: 0</p>
 
-</div>
+            <p>Tiến độ: 0%</p>
 
-</section>
+        </section>
 
-<section class="upload-manager">
+        <hr>
 
-<h2 class="section-title">
-Upload Manager
-</h2>
+        <!-- LOG -->
+        <section id="activity-log">
 
-<div class="manager-card">
+            <h2>Lịch Sử Hoạt Động</h2>
 
-<p>Part hiện tại: 0</p>
+            <ul>
 
-<p>Tiến độ: 0%</p>
+                <li>
+                    Upload movie.mkv thành công
+                </li>
 
-<div class="progress">
+                <li>
+                    Delete backup.zip
+                </li>
 
-<div class="progress-bar"></div>
+                <li>
+                    Download video.mp4
+                </li>
 
-</div>
+            </ul>
 
-</div>
+        </section>
 
-</section>
-
-<section class="activity-log">
-
-<h2 class="section-title">
-Lịch Sử Hoạt Động
-</h2>
-
-<ul class="log-list">
-
-<li class="log-item">
-Upload movie.mkv thành công
-</li>
-
-<li class="log-item">
-Delete backup.zip
-</li>
-
-</ul>
-
-</section>
-
-</section>
+    </section>
 
 </body>
+</html>
