@@ -4,262 +4,255 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telegram Drive</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <style src="style.css"></style>
-    <script src="app.js"></script>
-    <!-- LOGIN -->
-    <section id="login-page">
+<body class="app">
 
-        <h1>Telegram Drive</h1>
+    <section id="login-page" class="login-page">
 
-        <p>Nhập khóa để mở kho lưu trữ</p>
+        <div class="login-card">
 
-        <form>
-            <input
-                type="password"
-                placeholder="Nhập khóa"
-                required
-            >
+            <h1 class="logo">Telegram Drive</h1>
 
-            <button type="submit">
-                Mở Kho
-            </button>
-        </form>
+            <p class="subtitle">
+                Nhập khóa để mở kho lưu trữ
+            </p>
+
+            <form class="login-form">
+
+                <input
+                    class="input password-input"
+                    type="password"
+                    placeholder="Nhập khóa"
+                    required
+                >
+
+                <button
+                    class="btn btn-primary"
+                    type="submit"
+                >
+                    Mở Kho
+                </button>
+
+            </form>
+
+        </div>
 
     </section>
 
-    <!-- DASHBOARD -->
-    <section id="dashboard">
+    <section id="dashboard" class="dashboard">
 
-        <header>
+        <header class="header">
 
-            <h1>Telegram Drive</h1>
+            <h1 class="header-title">
+                Telegram Drive
+            </h1>
 
-            <button>
+            <button class="btn btn-danger logout-btn">
                 Đăng Xuất
             </button>
 
         </header>
 
-        <hr>
+        <section class="stats">
 
-        <!-- THỐNG KÊ -->
-        <section id="storage-overview">
+            <div class="stat-card">
+                <h3>Tổng File</h3>
+                <p class="total-files">0</p>
+            </div>
 
-            <h2>Tổng Quan</h2>
+            <div class="stat-card">
+                <h3>Tổng Dung Lượng</h3>
+                <p class="total-size">0 GB</p>
+            </div>
 
-            <p>Tổng File: 0</p>
-
-            <p>Tổng Dung Lượng: 0 GB</p>
-
-            <p>Đã Sử Dụng: 0 GB</p>
-
-        </section>
-
-        <hr>
-
-        <!-- UPLOAD -->
-        <section id="upload-section">
-
-            <h2>Upload File</h2>
-
-            <input type="file">
-
-            <button>
-                Upload
-            </button>
-
-            <p>Tiến độ upload: 0%</p>
+            <div class="stat-card">
+                <h3>Đã Sử Dụng</h3>
+                <p class="used-size">0 GB</p>
+            </div>
 
         </section>
 
-        <hr>
+        <section class="upload-section">
 
-        <!-- DANH SÁCH FILE -->
-        <section id="file-list">
+            <h2 class="section-title">
+                Upload File
+            </h2>
 
-            <h2>Danh Sách File</h2>
+            <div class="upload-box">
 
-            <table border="1">
+                <input
+                    class="input-file"
+                    type="file"
+                >
 
-                <thead>
+                <button
+                    class="btn btn-primary upload-btn"
+                    type="button"
+                >
+                    Upload
+                </button>
 
-                    <tr>
-                        <th>ID</th>
-                        <th>Tên File</th>
-                        <th>Dung Lượng</th>
-                        <th>Số Part</th>
-                        <th>Ngày Tạo</th>
-                        <th>Trạng Thái</th>
-                        <th>Thao Tác</th>
-                    </tr>
+            </div>
 
-                </thead>
+            <div class="progress">
 
-                <tbody>
+                <div class="progress-bar upload-progress-bar"></div>
 
-                    <tr>
+            </div>
 
-                        <td>abc123</td>
-
-                        <td>movie.mkv</td>
-
-                        <td>10 GB</td>
-
-                        <td>40</td>
-
-                        <td>14/06/2026</td>
-
-                        <td>uploaded</td>
-
-                        <td>
-
-                            <button>
-                                Download
-                            </button>
-
-                            <button>
-                                Delete
-                            </button>
-
-                            <button>
-                                Details
-                            </button>
-
-                        </td>
-
-                    </tr>
-
-                </tbody>
-
-            </table>
+            <p class="progress-text upload-progress-text">
+                0%
+            </p>
 
         </section>
 
-        <hr>
+        <section class="file-list">
 
-        <!-- CHI TIẾT FILE -->
-        <section id="file-details">
+            <h2 class="section-title">
+                Danh Sách File
+            </h2>
 
-            <h2>Chi Tiết File</h2>
+            <div class="table-wrapper">
 
-            <p>ID: abc123</p>
+                <table class="table">
 
-            <p>Tên: movie.mkv</p>
+                    <thead>
 
-            <p>Dung lượng: 10 GB</p>
+                        <tr>
+                            <th>ID</th>
+                            <th>Tên</th>
+                            <th>Dung Lượng</th>
+                            <th>Part</th>
+                            <th>Ngày</th>
+                            <th>Trạng Thái</th>
+                            <th>Thao Tác</th>
+                        </tr>
 
-            <p>Part Count: 40</p>
+                    </thead>
 
-            <p>Trạng thái: uploaded</p>
+                    <tbody class="file-table-body">
 
-            <p>Ngày tạo: 14/06/2026</p>
+                    </tbody>
 
-        </section>
+                </table>
 
-        <hr>
-
-        <!-- DANH SÁCH PART -->
-        <section id="part-list">
-
-            <h2>Danh Sách Part</h2>
-
-            <table border="1">
-
-                <thead>
-
-                    <tr>
-                        <th>Part</th>
-                        <th>Tên</th>
-                        <th>File ID</th>
-                        <th>Message ID</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    <tr>
-
-                        <td>1</td>
-
-                        <td>movie.part001.mkv</td>
-
-                        <td>file_id_here</td>
-
-                        <td>100</td>
-
-                    </tr>
-
-                </tbody>
-
-            </table>
+            </div>
 
         </section>
 
-        <hr>
+        <section class="details">
 
-        <!-- DOWNLOAD -->
-        <section id="download-manager">
+            <h2 class="section-title">
+                Chi Tiết File
+            </h2>
 
-            <h2>Download Manager</h2>
+            <div class="details-card">
 
-            <p>Trạng thái: Chưa tải</p>
+                <p class="detail-id">ID:</p>
+                <p class="detail-name">Tên:</p>
+                <p class="detail-size">Dung lượng:</p>
+                <p class="detail-parts">Part Count:</p>
+                <p class="detail-status">Trạng thái:</p>
 
-            <p>Tiến độ: 0%</p>
-
-            <button>
-                Tiếp Tục Download
-            </button>
-
-            <button>
-                Hủy Download
-            </button>
+            </div>
 
         </section>
 
-        <hr>
+        <section class="part-list">
 
-        <!-- UPLOAD MANAGER -->
-        <section id="upload-manager">
+            <h2 class="section-title">
+                Danh Sách Part
+            </h2>
 
-            <h2>Upload Manager</h2>
+            <div class="table-wrapper">
 
-            <p>File hiện tại: Không có</p>
+                <table class="table">
 
-            <p>Part hiện tại: 0</p>
+                    <thead>
 
-            <p>Tiến độ: 0%</p>
+                        <tr>
+                            <th>Part</th>
+                            <th>Tên</th>
+                            <th>File ID</th>
+                            <th>Message ID</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody class="part-table-body">
+
+                    </tbody>
+
+                </table>
+
+            </div>
 
         </section>
 
-        <hr>
+        <section class="download-manager">
 
-        <!-- LOG -->
-        <section id="activity-log">
+            <h2 class="section-title">
+                Download Manager
+            </h2>
 
-            <h2>Lịch Sử Hoạt Động</h2>
+            <div class="manager-card">
 
-            <ul>
+                <p class="download-status">
+                    Tiến độ: 0%
+                </p>
 
-                <li>
-                    Upload movie.mkv thành công
-                </li>
+                <div class="progress">
 
-                <li>
-                    Delete backup.zip
-                </li>
+                    <div class="progress-bar download-progress-bar"></div>
 
-                <li>
-                    Download video.mp4
-                </li>
+                </div>
+
+            </div>
+
+        </section>
+
+        <section class="upload-manager">
+
+            <h2 class="section-title">
+                Upload Manager
+            </h2>
+
+            <div class="manager-card">
+
+                <p class="current-part">
+                    Part hiện tại: 0
+                </p>
+
+                <p class="upload-status">
+                    Tiến độ: 0%
+                </p>
+
+                <div class="progress">
+
+                    <div class="progress-bar manager-upload-progress-bar"></div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <section class="activity-log">
+
+            <h2 class="section-title">
+                Lịch Sử Hoạt Động
+            </h2>
+
+            <ul class="log-list">
 
             </ul>
 
         </section>
 
     </section>
+
+    <script src="app.js"></script>
 
 </body>
 </html>
