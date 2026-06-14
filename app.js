@@ -1,70 +1,103 @@
+/**
+ * TG-Drive Frontend Logic
+ * ------------------------
+ * - Đăng nhập bằng mật khẩu tĩnh (lưu LocalStorage)
+ * - Upload: cắt file thành các PART <= PART_SIZE (mặc định 40MB) bằng file.slice(),
+ *   gửi từng part dạng RAW BINARY (KHÔNG dùng FormData) lên Worker, có Pause/Resume.
+ * - IndexedDB: lưu tiến trình upload (part nào đã xong) để Resume sau khi mất mạng / reload.
+ * - Download: dùng StreamSaver.js, đọc tuần tự từng part từ Worker (/download/:file_id)
+ *   và pipe thẳng xuống ổ cứng, không gom vào RAM.
+ */
+
 const PASSWORD = "140613";
+
+// Đổi thành URL Worker thật của bạn
 const API = "https://drive-worker.phamdatt140613.workers.dev";
 
-// DOM Elements (Giữ nguyên của bạn)
+// Mọi request đều phải kèm header Authorization khớp AUTH_KEY trên Worker
+const AUTH_HEADER = "140613";
+
+// Kích thước mỗi part (bytes) - mặc định 40MB, có thể đổi qua <select id="part-size">
+const DEFAULT_PART_SIZE = 40 * 1024 * 1024;
+
+// =========================================================
+// DOM REFERENCES
+// =========================================================
+
 const loginPage = document.querySelector("#login-page");
 const dashboard = document.querySelector("#dashboard");
+
 const loginForm = document.querySelector(".login-form");
 const passwordInput = document.querySelector(".password-input");
+
 const uploadBtn = document.querySelector(".upload-btn");
 const uploadInput = document.querySelector(".input-file");
+const partSizeSelect = document.querySelector("#part-size");
+
 const logoutBtn = document.querySelector(".logout-btn");
+
 const fileTableBody = document.querySelector(".file-table-body");
 const partTableBody = document.querySelector(".part-table-body");
+
 const totalFiles = document.querySelector(".total-files");
 const totalSize = document.querySelector(".total-size");
 const usedSize = document.querySelector(".used-size");
+
 const uploadProgressBar = document.querySelector(".upload-progress-bar");
 const uploadProgressText = document.querySelector(".upload-progress-text");
+
 const managerUploadBar = document.querySelector(".manager-upload-progress-bar");
 const uploadStatus = document.querySelector(".upload-status");
+const currentPartText = document.querySelector(".current-part");
+
+const uploadControls = document.querySelector("#upload-controls");
+const btnPause = document.querySelector("#btn-pause");
+const btnResume = document.querySelector("#btn-resume");
+
 const downloadProgressBar = document.querySelector(".download-progress-bar");
 const downloadStatus = document.querySelector(".download-status");
-const currentPartText = document.querySelector(".current-part");
+
 const detailId = document.querySelector(".detail-id");
 const detailName = document.querySelector(".detail-name");
 const detailSize = document.querySelector(".detail-size");
 const detailParts = document.querySelector(".detail-parts");
 const detailStatus = document.querySelector(".detail-status");
+
 const logList = document.querySelector(".log-list");
 
-// Upload Controls
-let isPaused = false;
-let activeUploadTask = null;
-const btnPause = document.getElementById("btn-pause");
-const btnResume = document.getElementById("btn-resume");
-const uploadControls = document.getElementById("upload-controls");
+// =========================================================
+// STATE
+// =========================================================
 
-// --- QUẢN LÝ INDEXED DB CHO RESUME UPLOAD ---
-function openDB() {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open("TelegramDrive", 1);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains("progress")) db.createObjectStore("progress", { keyPath: "id" });
-        };
-        req.onsuccess = (e) => resolve(e.target.result);
-        req.onerror = (e) => reject(e.target.error);
-    });
-}
-async function saveProgress(id, data) {
-    const db = await openDB();
-    return new Promise(res => { const tx = db.transaction("progress", "readwrite"); tx.objectStore("progress").put({ id, ...data }); tx.oncomplete = () => res(); });
-}
-async function getProgress(id) {
-    const db = await openDB();
-    return new Promise(res => { const tx = db.transaction("progress", "readonly"); const req = tx.objectStore("progress").get(id); req.onsuccess = () => res(req.result); });
-}
-async function deleteProgress(id) {
-    const db = await openDB();
-    return new Promise(res => { const tx = db.transaction("progress", "readwrite"); tx.objectStore("progress").delete(id); tx.oncomplete = () => res(); });
-}
+let uploadState = {
+    file: null,        // File object hiện tại đang upload
+    fileId: "",         // ID file logic do Worker cấp (rỗng cho tới khi part đầu tiên xong)
+    partSize: DEFAULT_PART_SIZE,
+    totalParts: 0,
+    currentPart: 1,
+    paused: false,
+    cancelled: false,
+    sessionKey: ""      // key để lưu tiến trình trong IndexedDB (name+size)
+};
 
 init();
 
-function init() {
-    if (localStorage.getItem("drive_auth") === PASSWORD) showDashboard();
-    else showLogin();
+// =========================================================
+// INIT / AUTH
+// =========================================================
+
+async function init() {
+
+    await openDB();
+
+    if (localStorage.getItem("drive_auth") === "1") {
+        showDashboard();
+    } else {
+        showLogin();
+    }
+
+    // Nếu có session upload chưa hoàn thành -> hỏi resume khi mở dashboard
+    checkPendingUpload();
 }
 
 function showLogin() {
@@ -80,11 +113,15 @@ function showDashboard() {
 
 loginForm.addEventListener("submit", e => {
     e.preventDefault();
+
     const pass = passwordInput.value.trim();
+
     if (pass === PASSWORD) {
-        localStorage.setItem("drive_auth", pass);
+        localStorage.setItem("drive_auth", "1");
         showDashboard();
-    } else alert("Sai khóa truy cập!");
+    } else {
+        alert("Sai khóa");
+    }
 });
 
 logoutBtn.addEventListener("click", () => {
@@ -92,148 +129,389 @@ logoutBtn.addEventListener("click", () => {
     location.reload();
 });
 
-// --- LOGIC CHIA PART & UPLOAD ---
-uploadBtn.addEventListener("click", uploadFile);
+// =========================================================
+// INDEXEDDB - lưu tiến trình Upload/Download để Resume
+// =========================================================
 
-btnPause.onclick = () => { isPaused = true; addLog("Đã tạm dừng Upload"); };
-btnResume.onclick = () => { isPaused = false; if (activeUploadTask) activeUploadTask(); addLog("Tiếp tục Upload"); };
+let db = null;
 
-async function generateFileId(file) {
-    return "tg_" + btoa(encodeURIComponent(file.name)).substring(0, 10) + "_" + file.size;
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open("tgdrive_db", 1);
+
+        request.onupgradeneeded = () => {
+            const idb = request.result;
+
+            if (!idb.objectStoreNames.contains("upload_progress")) {
+                // key: sessionKey (name_size), value: { fileId, partSize, totalParts, doneParts: [1,2,...], name, size }
+                idb.createObjectStore("upload_progress", { keyPath: "sessionKey" });
+            }
+        };
+
+        request.onsuccess = () => {
+            db = request.result;
+            resolve(db);
+        };
+
+        request.onerror = () => reject(request.error);
+    });
 }
 
-async function uploadFile() {
+function dbPut(storeName, value) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).put(value);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+function dbGet(storeName, key) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readonly");
+        const req = tx.objectStore(storeName).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function dbDelete(storeName, key) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+function dbGetAllKeys(storeName) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readonly");
+        const req = tx.objectStore(storeName).getAllKeys();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function checkPendingUpload() {
+    if (!db) return;
+
+    const keys = await dbGetAllKeys("upload_progress");
+
+    if (keys.length > 0) {
+        addLog(`Tìm thấy ${keys.length} tiến trình upload chưa hoàn tất. Chọn lại file gốc để Resume.`);
+    }
+}
+
+// =========================================================
+// UPLOAD - cắt file thành part 40MB và gửi tuần tự
+// =========================================================
+
+uploadBtn.addEventListener("click", () => {
+    if (uploadState.paused === false && uploadState.file && !uploadState.cancelled) {
+        // Đang có 1 upload chạy -> bấm nút này không làm gì thêm
+        return;
+    }
+    startUpload();
+});
+
+btnPause.addEventListener("click", () => {
+    uploadState.paused = true;
+    uploadStatus.textContent = `Đã tạm dừng tại part ${uploadState.currentPart}/${uploadState.totalParts}`;
+    addLog("Tạm dừng upload");
+});
+
+btnResume.addEventListener("click", () => {
+    if (!uploadState.file) {
+        alert("Chưa chọn file để resume. Vui lòng chọn lại file gốc.");
+        return;
+    }
+    if (!uploadState.paused) return;
+
+    uploadState.paused = false;
+    addLog("Tiếp tục upload");
+    runUploadLoop();
+});
+
+async function startUpload() {
     const file = uploadInput.files[0];
-    if (!file) return alert("Vui lòng chọn file!");
 
-    const fileId = await generateFileId(file);
-    const partSizeMB = parseInt(document.getElementById("part-size").value) || 40;
-    const PART_SIZE = partSizeMB * 1024 * 1024;
-    const partCount = Math.ceil(file.size / PART_SIZE);
-
-    let progressData = await getProgress(fileId);
-    let startPartIndex = 1;
-
-    if (progressData) {
-        startPartIndex = progressData.current_part;
-        addLog(`Phát hiện tiến trình cũ: Khôi phục từ part ${startPartIndex}`);
-    } else {
-        progressData = { name: file.name, current_part: 1, part_count: partCount };
-        await saveProgress(fileId, progressData);
-        addLog(`Bắt đầu chia file: ${partCount} parts (${partSizeMB}MB/part)`);
+    if (!file) {
+        alert("Chọn file");
+        return;
     }
 
-    uploadControls.style.display = "flex";
-    isPaused = false;
+    const partSizeMB = Number(partSizeSelect ? partSizeSelect.value : 40);
+    const partSize = partSizeMB * 1024 * 1024;
 
-    activeUploadTask = async function() {
-        for (let i = startPartIndex; i <= partCount; i++) {
-            if (isPaused) {
-                progressData.current_part = i;
-                await saveProgress(fileId, progressData);
-                return;
-            }
+    const sessionKey = `${file.name}_${file.size}`;
 
-            const startByte = (i - 1) * PART_SIZE;
-            const endByte = Math.min(i * PART_SIZE, file.size);
-            const chunk = file.slice(startByte, endByte);
+    // Kiểm tra IndexedDB xem có tiến trình cũ chưa hoàn tất không -> resume
+    let progress = await dbGet("upload_progress", sessionKey);
 
-            const extIdx = file.name.lastIndexOf(".");
-            const baseName = extIdx !== -1 ? file.name.substring(0, extIdx) : file.name;
-            const ext = extIdx !== -1 ? file.name.substring(extIdx) : "";
-            const partStr = String(i).padStart(3, '0');
-            const partName = `${baseName}.part${partStr}${ext}`;
+    const totalParts = Math.ceil(file.size / partSize);
 
-            currentPartText.textContent = `Part hiện tại: ${i} / ${partCount} (${partName})`;
-            uploadStatus.textContent = "Đang tải lên...";
+    if (progress && progress.totalParts === totalParts) {
+        addLog(`Phát hiện tiến trình cũ: đã xong ${progress.doneParts.length}/${totalParts} part. Tiếp tục từ đó.`);
+    } else {
+        progress = {
+            sessionKey,
+            fileId: "",
+            partSize,
+            totalParts,
+            doneParts: [],
+            name: file.name,
+            size: file.size,
+            mimeType: file.type || "application/octet-stream"
+        };
+        await dbPut("upload_progress", progress);
+    }
 
-            try {
-                const meta = { id: fileId, name: file.name, size: file.size, part_index: i, part_count: partCount, part_name: partName };
-                
-                const response = await fetch(API + "/upload", {
-                    method: "POST",
-                    headers: {
-                        "Authorization": PASSWORD,
-                        "X-File-Meta": JSON.stringify(meta)
-                    },
-                    body: chunk
-                });
-
-                if (!response.ok) throw new Error("Upload Worker Failed");
-
-                // Tính % cho UI
-                const percent = Math.round((i / partCount) * 100);
-                uploadProgressBar.style.width = percent + "%";
-                managerUploadBar.style.width = percent + "%";
-                uploadProgressText.textContent = percent + "%";
-                uploadStatus.textContent = percent + "%";
-
-                await saveProgress(fileId, { ...progressData, current_part: i + 1 });
-
-            } catch (error) {
-                console.error(error);
-                uploadStatus.textContent = "Lỗi mạng, tự động thử lại sau 3s...";
-                addLog(`Lỗi tại part ${i}, thử lại sau 3s`);
-                i--; // Lùi lại 1 index để thử lại
-                await new Promise(r => setTimeout(r, 3000));
-            }
-        }
-
-        // Hoàn thành
-        uploadStatus.textContent = "Hoàn tất 100%";
-        currentPartText.textContent = "Không có tiến trình nào";
-        uploadControls.style.display = "none";
-        addLog("Upload thành công: " + file.name);
-        await deleteProgress(fileId);
-        loadFiles();
+    uploadState = {
+        file,
+        fileId: progress.fileId || "",
+        partSize: progress.partSize,
+        totalParts: progress.totalParts,
+        currentPart: 1,
+        paused: false,
+        cancelled: false,
+        sessionKey
     };
 
-    activeUploadTask();
+    uploadControls.style.display = "flex";
+    btnResume.style.display = "none";
+    btnPause.style.display = "inline-block";
+
+    addLog("Bắt đầu upload: " + file.name);
+
+    runUploadLoop();
 }
 
-// --- TẢI DANH SÁCH FILE ---
-async function loadFiles() {
-    try {
-        const response = await fetch(API + "/files", { headers: { "Authorization": PASSWORD } });
-        if(!response.ok) return;
-        const files = await response.json();
-        renderFiles(files);
-    } catch (error) {
-        addLog("Không tải được danh sách file");
+/**
+ * Vòng lặp upload tuần tự từng part.
+ * - Dùng file.slice() để tạo Blob nhỏ cho từng part (không load cả file vào RAM).
+ * - Bỏ qua part đã có trong IndexedDB.doneParts (resume).
+ * - Sau mỗi part thành công -> ghi vào IndexedDB.
+ */
+async function runUploadLoop() {
+
+    const progress = await dbGet("upload_progress", uploadState.sessionKey);
+    if (!progress) return;
+
+    const { file, partSize, totalParts } = uploadState;
+
+    for (let partIndex = 1; partIndex <= totalParts; partIndex++) {
+
+        if (uploadState.paused || uploadState.cancelled) {
+            return;
+        }
+
+        // Bỏ qua part đã upload xong (resume)
+        if (progress.doneParts.includes(partIndex)) {
+            uploadState.currentPart = partIndex;
+            updateUploadUI(partIndex, totalParts);
+            continue;
+        }
+
+        uploadState.currentPart = partIndex;
+        updateUploadUI(partIndex, totalParts);
+
+        const start = (partIndex - 1) * partSize;
+        const end = Math.min(start + partSize, file.size);
+
+        // file.slice() chỉ tạo "view" trên file, KHÔNG đọc dữ liệu vào RAM ngay
+        const chunkBlob = file.slice(start, end);
+
+        try {
+            const result = await uploadPart(chunkBlob, {
+                fileId: uploadState.fileId,
+                fileName: file.name,
+                fileSize: file.size,
+                partIndex,
+                totalParts,
+                mimeType: progress.mimeType
+            });
+
+            // Lần đầu Worker trả về fileId mới -> lưu lại để các part sau dùng chung
+            if (!uploadState.fileId && result.file_id) {
+                uploadState.fileId = result.file_id;
+                progress.fileId = result.file_id;
+            }
+
+            progress.doneParts.push(partIndex);
+            progress.doneParts.sort((a, b) => a - b);
+            await dbPut("upload_progress", progress);
+
+            addLog(`Upload part ${partIndex}/${totalParts} thành công`);
+
+        } catch (err) {
+            console.error(err);
+            uploadStatus.textContent = `Lỗi upload tại part ${partIndex}, đang tạm dừng. Bấm Tiếp Tục để thử lại.`;
+            addLog(`Lỗi upload part ${partIndex}: ${err.message || err}`);
+            uploadState.paused = true;
+            return;
+        }
     }
+
+    // Hoàn tất toàn bộ
+    uploadProgressBar.style.width = "100%";
+    managerUploadBar.style.width = "100%";
+    uploadProgressText.textContent = "100%";
+    uploadStatus.textContent = "Hoàn tất";
+    currentPartText.textContent = `Part hiện tại: ${totalParts}/${totalParts}`;
+
+    uploadControls.style.display = "none";
+
+    await dbDelete("upload_progress", uploadState.sessionKey);
+
+    addLog("Upload hoàn tất: " + uploadState.file.name);
+
+    loadFiles();
+}
+
+/**
+ * Gửi 1 part dưới dạng RAW BINARY (body = Blob) tới Worker.
+ * Metadata được truyền qua header để Worker không cần parse multipart.
+ */
+async function uploadPart(blob, meta) {
+
+    const headers = {
+        "Authorization": AUTH_HEADER,
+        "Content-Type": "application/octet-stream",
+        "X-File-Name": encodeURIComponent(meta.fileName),
+        "X-File-Size": String(meta.fileSize),
+        "X-Part-Index": String(meta.partIndex),
+        "X-Part-Count": String(meta.totalParts),
+        "X-Mime-Type": meta.mimeType || "application/octet-stream"
+    };
+
+    if (meta.fileId) {
+        headers["X-File-Id"] = meta.fileId;
+    }
+
+    const response = await fetch(API + "/upload", {
+        method: "POST",
+        headers,
+        body: blob // Blob được fetch() stream thẳng đi, không buffer vào string
+    });
+
+    if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+}
+
+function updateUploadUI(partIndex, totalParts) {
+    const percent = Math.round(((partIndex - 1) / totalParts) * 100);
+
+    uploadProgressBar.style.width = percent + "%";
+    managerUploadBar.style.width = percent + "%";
+    uploadProgressText.textContent = percent + "%";
+    uploadStatus.textContent = `Đang upload part ${partIndex}/${totalParts} (${percent}%)`;
+    currentPartText.textContent = `Part hiện tại: ${partIndex}/${totalParts}`;
+}
+
+// =========================================================
+// LOAD FILES
+// =========================================================
+
+async function loadFiles() {
+
+    try {
+
+        const response = await fetch(API + "/files", {
+            headers: { "Authorization": AUTH_HEADER }
+        });
+
+        const files = await response.json();
+
+        renderFiles(files);
+
+    } catch (error) {
+
+        console.error(error);
+
+        addLog("Không tải được danh sách file");
+
+    }
+
 }
 
 function renderFiles(files) {
+
     fileTableBody.innerHTML = "";
+
     let totalBytes = 0;
 
     files.forEach(file => {
+
         totalBytes += Number(file.size || 0);
+
         const tr = document.createElement("tr");
+
         tr.innerHTML = `
         <td>${file.id || "-"}</td>
         <td>${file.name || "-"}</td>
         <td>${formatSize(file.size || 0)}</td>
         <td>${file.part_count || 1}</td>
         <td>${formatDate(file.created_at)}</td>
-        <td><span class="badge badge-success">${file.status || "uploaded"}</span></td>
+        <td>
+            <span class="badge ${file.status === "uploaded" ? "badge-success" : "badge-warning"}">
+                ${file.status || "uploaded"}
+            </span>
+        </td>
         <td class="actions">
-            <button class="btn btn-secondary" onclick="showDetails('${file.id}')">Chi Tiết</button>
-            <button class="btn btn-success" onclick="downloadFile('${file.id}')">Tải Về</button>
-            <button class="btn btn-danger" onclick="deleteFile('${file.id}')">Xóa</button>
-        </td>`;
+
+            <button
+                class="btn btn-secondary"
+                onclick="showDetails('${file.id}')"
+            >
+                Details
+            </button>
+
+            <button
+                class="btn btn-success"
+                onclick="downloadFile('${file.id}')"
+            >
+                Download
+            </button>
+
+            <button
+                class="btn btn-danger"
+                onclick="deleteFile('${file.id}')"
+            >
+                Delete
+            </button>
+
+        </td>
+        `;
+
         fileTableBody.appendChild(tr);
+
     });
 
     totalFiles.textContent = files.length;
+
     totalSize.textContent = formatSize(totalBytes);
+
     usedSize.textContent = formatSize(totalBytes);
+
 }
 
-// --- XEM CHI TIẾT FILE ---
+// =========================================================
+// FILE DETAILS
+// =========================================================
+
 window.showDetails = async function(id) {
+
     try {
-        const response = await fetch(API + "/file/" + id, { headers: { "Authorization": PASSWORD } });
+
+        const response = await fetch(API + "/file/" + id, {
+            headers: { "Authorization": AUTH_HEADER }
+        });
+
         const file = await response.json();
 
         detailId.textContent = "ID: " + (file.id || "-");
@@ -243,81 +521,207 @@ window.showDetails = async function(id) {
         detailStatus.textContent = "Trạng thái: " + (file.status || "-");
 
         partTableBody.innerHTML = "";
+
         if (Array.isArray(file.parts)) {
+
             file.parts.forEach(part => {
+
                 const row = document.createElement("tr");
-                row.innerHTML = `<td>${part.index}</td><td>${part.name}</td><td>${part.file_id}</td><td>${part.message_id}</td>`;
+
+                row.innerHTML = `
+                <td>${part.index}</td>
+                <td>${part.name}</td>
+                <td>${part.file_id}</td>
+                <td>${part.message_id}</td>
+                `;
+
                 partTableBody.appendChild(row);
+
             });
+
         }
-        window.scrollTo({ top: document.querySelector('.details').offsetTop, behavior: 'smooth' });
-    } catch (error) { console.error(error); }
+
+    } catch (error) {
+        console.error(error);
+    }
+
 };
 
-// --- XÓA FILE ---
+// =========================================================
+// DELETE FILE
+// =========================================================
+
 window.deleteFile = async function(id) {
-    if (!confirm("Bạn có chắc chắn muốn xóa vĩnh viễn file này?")) return;
+
+    const ok = confirm("Xóa file?");
+
+    if (!ok) return;
+
     try {
-        await fetch(API + "/file/" + id, { method: "DELETE", headers: { "Authorization": PASSWORD } });
-        addLog("Đã xóa file: " + id);
-        document.querySelector('.details-card').innerHTML = '<p>Đã xóa dữ liệu</p>';
+
+        await fetch(API + "/file/" + id, {
+            method: "DELETE",
+            headers: { "Authorization": AUTH_HEADER }
+        });
+
+        addLog("Delete: " + id);
+
         loadFiles();
-    } catch (error) { console.error(error); }
+
+    } catch (error) {
+        console.error(error);
+    }
+
 };
 
-// --- LOGIC STREAM DOWNLOAD ---
-window.downloadFile = async function(id) {
-    addLog("Đang kết nối để tải file: " + id);
-    try {
-        const res = await fetch(API + "/file/" + id, { headers: { "Authorization": PASSWORD } });
-        const fileMeta = await res.json();
-        
-        const fileStream = window.streamSaver.createWriteStream(fileMeta.name, { size: fileMeta.size });
-        const writer = fileStream.getWriter();
-        const partCount = fileMeta.parts.length;
+// =========================================================
+// DOWNLOAD - StreamSaver, ghép part tuần tự, không ngốn RAM
+// =========================================================
 
-        for (let i = 0; i < partCount; i++) {
-            const part = fileMeta.parts[i];
-            downloadStatus.textContent = `Đang tải: ${part.name} (${i+1}/${partCount})`;
-            
-            const partRes = await fetch(API + "/download/" + part.file_id);
-            if (!partRes.ok) throw new Error("Lỗi tải part " + part.name);
-            
-            const reader = partRes.body.getReader();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                await writer.write(value);
+/**
+ * Tải file:
+ * 1. Lấy metadata (danh sách part + telegram file_id của từng part).
+ * 2. Mở 1 WritableStream từ StreamSaver với tên file gốc.
+ * 3. Lần lượt với từng part:
+ *    - fetch(API + "/download/" + part.file_id) -> nhận ReadableStream
+ *    - đọc từng chunk bằng reader.read() và writer.write(chunk) ngay,
+ *      KHÔNG cộng dồn vào 1 buffer lớn.
+ * 4. Đóng writer khi xong toàn bộ part.
+ */
+window.downloadFile = async function(id) {
+
+    addLog("Bắt đầu download: " + id);
+
+    let fileMeta;
+
+    try {
+        const response = await fetch(API + "/file/" + id, {
+            headers: { "Authorization": AUTH_HEADER }
+        });
+        fileMeta = await response.json();
+    } catch (error) {
+        console.error(error);
+        downloadStatus.textContent = "Lỗi: không lấy được metadata";
+        return;
+    }
+
+    if (!fileMeta || !Array.isArray(fileMeta.parts) || fileMeta.parts.length === 0) {
+        alert("File không có dữ liệu part để tải");
+        return;
+    }
+
+    const parts = fileMeta.parts.slice().sort((a, b) => a.index - b.index);
+    const totalParts = parts.length;
+
+    // Mở stream ghi xuống đĩa qua StreamSaver
+    const fileStream = streamSaver.createWriteStream(fileMeta.name || "download.bin", {
+        size: fileMeta.size || undefined
+    });
+
+    const writer = fileStream.getWriter();
+
+    downloadProgressBar.style.width = "0%";
+    downloadStatus.textContent = `Đang tải part 1/${totalParts}...`;
+
+    let totalDownloaded = 0;
+    const totalSizeBytes = Number(fileMeta.size || 0);
+
+    try {
+
+        for (let i = 0; i < totalParts; i++) {
+
+            const part = parts[i];
+
+            downloadStatus.textContent = `Đang tải part ${i + 1}/${totalParts} (${part.name})`;
+
+            const response = await fetch(API + "/download/" + part.file_id, {
+                headers: { "Authorization": AUTH_HEADER }
+            });
+
+            if (!response.ok || !response.body) {
+                throw new Error(`Không tải được part ${i + 1}`);
             }
 
-            const percent = Math.round(((i + 1) / partCount) * 100);
-            downloadProgressBar.style.width = percent + "%";
-            downloadStatus.textContent = `Hoàn thành: ${percent}%`;
+            const reader = response.body.getReader();
+
+            // Đọc tuần tự từng chunk và ghi ngay xuống đĩa
+            while (true) {
+
+                const { done, value } = await reader.read();
+
+                if (done) break;
+
+                await writer.write(value);
+
+                totalDownloaded += value.length;
+
+                if (totalSizeBytes > 0) {
+                    const percent = Math.min(100, Math.round((totalDownloaded / totalSizeBytes) * 100));
+                    downloadProgressBar.style.width = percent + "%";
+                }
+            }
+
+            addLog(`Đã tải xong part ${i + 1}/${totalParts}`);
         }
+
         await writer.close();
-        downloadStatus.textContent = "Tải về hoàn tất!";
-        addLog("Đã tải xong: " + fileMeta.name);
-    } catch (err) {
-        addLog("Lỗi Download: " + err.message);
-        downloadStatus.textContent = "Lỗi tải về";
+
+        downloadProgressBar.style.width = "100%";
+        downloadStatus.textContent = "Hoàn tất download";
+        addLog("Download hoàn tất: " + (fileMeta.name || id));
+
+    } catch (error) {
+        console.error(error);
+        downloadStatus.textContent = "Lỗi download: " + (error.message || error);
+        addLog("Download lỗi: " + (error.message || error));
+
+        try {
+            await writer.abort();
+        } catch (e) {
+            // ignore
+        }
     }
+
 };
 
-// --- UTILS ---
+// =========================================================
+// UTILS
+// =========================================================
+
 function addLog(text) {
+
     const li = document.createElement("li");
+
     li.className = "log-item";
+
     li.textContent = new Date().toLocaleTimeString() + " - " + text;
+
     logList.prepend(li);
+
 }
+
 function formatSize(bytes) {
+
     bytes = Number(bytes || 0);
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
-    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + " MB";
+
+    if (bytes < 1024)
+        return bytes + " B";
+
+    if (bytes < 1024 * 1024)
+        return (bytes / 1024).toFixed(2) + " KB";
+
+    if (bytes < 1024 * 1024 * 1024)
+        return (bytes / 1024 / 1024).toFixed(2) + " MB";
+
     return (bytes / 1024 / 1024 / 1024).toFixed(2) + " GB";
+
 }
+
 function formatDate(timestamp) {
-    if (!timestamp) return "-";
+
+    if (!timestamp)
+        return "-";
+
     return new Date(timestamp).toLocaleString();
+
 }
