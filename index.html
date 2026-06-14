@@ -52,7 +52,7 @@
                 <button class="btn btn-success upload-btn" onclick="document.getElementById('input-file').click()">
                     Tải Lên File
                 </button>
-                <button class="btn btn-danger" id="bulk-delete-btn" style="display: none;">
+                <button class="btn btn-danger" id="bulk-delete-btn" sftyle="display: none;">
                     Xóa mục đã chọn (<span id="select-count">0</span>)
                 </button>
                 <button class="btn btn-danger" id="clear-all-storage-btn" style="background: #be123c;">
@@ -61,7 +61,7 @@
             </div>
         </div>
 
-        <section class="upload-manager" id="upload-manager-panel" style="display: none;">
+<section class="upload-manager" id="upload-manager-panel" style="display: none;">
             <div class="manager-card">
                 <div class="manager-info">
                     <span class="uploading-file-name">Đang xử lý file...</span>
@@ -70,8 +70,9 @@
                 <div class="progress">
                     <div class="progress-bar manager-upload-progress-bar"></div>
                 </div>
-                <div class="control-actions" style="margin-top: 10px;">
-                    <button class="btn btn-primary" id="btn-pause-upload">Tạm dừng</button>
+                <div class="control-actions" id="upload-controls" style="margin-top: 10px; display: none; gap: 8px;">
+                    <button class="btn btn-secondary" id="btn-pause">Tạm dừng</button>
+                    <button class="btn btn-success" id="btn-resume" style="display: none;">Tiếp tục</button>
                 </div>
             </div>
         </section>
