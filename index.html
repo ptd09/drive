@@ -1,115 +1,304 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Kho File</title>
-<style>
-body{
-    font-family:Arial,sans-serif;
-    max-width:800px;
-    margin:auto;
-    padding:20px;
-}
-#vault{
-    display:none;
-}
-.file{
-    border:1px solid #ccc;
-    padding:10px;
-    margin:10px 0;
-}
-button{
-    cursor:pointer;
-}
-</style>
-</head>
-<body>
+<body class="app">
 
-<h1>Kho File</h1>
+<section id="login-page" class="login-page">
 
-<div id="login">
-    <input id="pass" type="password" placeholder="Nhập mã">
-    <button onclick="unlock()">Mở Kho</button>
+<div class="login-card">
+
+<h1 class="logo">Telegram Drive</h1>
+
+<p class="subtitle">
+Nhập khóa để mở kho lưu trữ
+</p>
+
+<form class="login-form">
+
+<input
+class="input"
+type="password"
+placeholder="Nhập khóa"
+required
+>
+
+<button
+class="btn btn-primary"
+type="submit"
+>
+Mở Kho
+</button>
+
+</form>
+
 </div>
 
-<div id="vault">
-    <input type="file" id="fileInput">
-    <h3>Lịch sử</h3>
-    <div id="list"></div>
+</section>
+
+<section id="dashboard" class="dashboard">
+
+<header class="header">
+
+<h1 class="header-title">
+Telegram Drive
+</h1>
+
+<button class="btn btn-danger">
+Đăng Xuất
+</button>
+
+</header>
+
+<section class="stats">
+
+<div class="stat-card">
+<h3>Tổng File</h3>
+<p>0</p>
 </div>
 
-<script>
-const PASSWORD = "140613";
+<div class="stat-card">
+<h3>Tổng Dung Lượng</h3>
+<p>0 GB</p>
+</div>
 
-function unlock(){
-    if(document.getElementById("pass").value===PASSWORD){
-        document.getElementById("login").style.display="none";
-        document.getElementById("vault").style.display="block";
-        loadFiles();
-    }else{
-        alert("Sai mã");
-    }
-}
+<div class="stat-card">
+<h3>Đã Sử Dụng</h3>
+<p>0 GB</p>
+</div>
 
-document.getElementById("fileInput").addEventListener("change",e=>{
-    const file=e.target.files[0];
-    if(!file) return;
+</section>
 
-    const reader=new FileReader();
+<section class="upload-section">
 
-    reader.onload=function(){
-        let files=JSON.parse(localStorage.getItem("vaultFiles")||"[]");
+<h2 class="section-title">
+Upload File
+</h2>
 
-        files.push({
-            name:file.name,
-            type:file.type,
-            data:reader.result,
-            time:new Date().toLocaleString()
-        });
+<div class="upload-box">
 
-        localStorage.setItem(
-            "vaultFiles",
-            JSON.stringify(files)
-        );
+<input
+class="input-file"
+type="file"
+>
 
-        loadFiles();
-    };
+<button
+class="btn btn-primary"
+>
+Upload
+</button>
 
-    reader.readAsDataURL(file);
-});
+</div>
 
-function loadFiles(){
-    const list=document.getElementById("list");
-    list.innerHTML="";
+<div class="progress">
 
-    let files=JSON.parse(localStorage.getItem("vaultFiles")||"[]");
+<div class="progress-bar"></div>
 
-    files.forEach((f,i)=>{
-        const div=document.createElement("div");
-        div.className="file";
+</div>
 
-        div.innerHTML=`
-            <b>${f.name}</b><br>
-            ${f.time}<br>
-            <button onclick="downloadFile(${i})">
-                Tải về
-            </button>
-        `;
+<p class="progress-text">
+0%
+</p>
 
-        list.appendChild(div);
-    });
-}
+</section>
 
-function downloadFile(index){
-    const files=JSON.parse(localStorage.getItem("vaultFiles")||"[]");
-    const f=files[index];
+<section class="file-list">
 
-    const a=document.createElement("a");
-    a.href=f.data;
-    a.download=f.name;
-    a.click();
-}
-</script>
+<h2 class="section-title">
+Danh Sách File
+</h2>
+
+<div class="table-wrapper">
+
+<table class="table">
+
+<thead>
+
+<tr>
+<th>ID</th>
+<th>Tên</th>
+<th>Dung Lượng</th>
+<th>Part</th>
+<th>Ngày</th>
+<th>Trạng Thái</th>
+<th>Thao Tác</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr>
+
+<td>abc123</td>
+
+<td>movie.mkv</td>
+
+<td>10GB</td>
+
+<td>40</td>
+
+<td>14/06/2026</td>
+
+<td>
+
+<span class="badge badge-success">
+uploaded
+</span>
+
+</td>
+
+<td class="actions">
+
+<button
+class="btn btn-success"
+>
+Download
+</button>
+
+<button
+class="btn btn-danger"
+>
+Delete
+</button>
+
+<button
+class="btn btn-secondary"
+>
+Details
+</button>
+
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+</section>
+
+<section class="details">
+
+<h2 class="section-title">
+Chi Tiết File
+</h2>
+
+<div class="details-card">
+
+<p>ID: abc123</p>
+<p>Tên: movie.mkv</p>
+<p>Dung lượng: 10GB</p>
+<p>Part Count: 40</p>
+<p>Trạng thái: uploaded</p>
+
+</div>
+
+</section>
+
+<section class="part-list">
+
+<h2 class="section-title">
+Danh Sách Part
+</h2>
+
+<div class="table-wrapper">
+
+<table class="table">
+
+<thead>
+
+<tr>
+<th>Part</th>
+<th>Tên</th>
+<th>File ID</th>
+<th>Message ID</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr>
+
+<td>1</td>
+
+<td>movie.part001.mkv</td>
+
+<td>xxxxx</td>
+
+<td>100</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+</section>
+
+<section class="download-manager">
+
+<h2 class="section-title">
+Download Manager
+</h2>
+
+<div class="manager-card">
+
+<p>Tiến độ: 0%</p>
+
+<div class="progress">
+
+<div class="progress-bar"></div>
+
+</div>
+
+</div>
+
+</section>
+
+<section class="upload-manager">
+
+<h2 class="section-title">
+Upload Manager
+</h2>
+
+<div class="manager-card">
+
+<p>Part hiện tại: 0</p>
+
+<p>Tiến độ: 0%</p>
+
+<div class="progress">
+
+<div class="progress-bar"></div>
+
+</div>
+
+</div>
+
+</section>
+
+<section class="activity-log">
+
+<h2 class="section-title">
+Lịch Sử Hoạt Động
+</h2>
+
+<ul class="log-list">
+
+<li class="log-item">
+Upload movie.mkv thành công
+</li>
+
+<li class="log-item">
+Delete backup.zip
+</li>
+
+</ul>
+
+</section>
+
+</section>
 
 </body>
-</html>
