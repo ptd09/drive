@@ -389,11 +389,26 @@ async function uploadPart(blob, meta) {
         headers["X-File-Id"] = meta.fileId;
     }
 
-    const response = await fetch(API + "/upload", {
+    const form = new FormData();
+
+form.append(
+    "file",
+    new File(
+        [blob],
+        `${meta.fileName}.part${meta.partIndex}`,
+        {
+            type: "application/octet-stream"
+        }
+    )
+);
+
+const response = await fetch(
+    API + "/upload",
+    {
         method: "POST",
-        headers,
-        body: blob // Blob được fetch() stream thẳng đi, không buffer vào string
-    });
+        body: form
+    }
+);
 
     if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -427,7 +442,15 @@ async function loadFiles() {
 
         const files = await response.json();
 
-        renderFiles(files);
+if (!Array.isArray(files)) {
+
+    console.error(files);
+
+    return;
+
+}
+
+renderFiles(files);
 
     } catch (error) {
 
