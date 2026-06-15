@@ -162,7 +162,6 @@ function openDB() {
 
         request.onupgradeneeded = () => {
             const idb = request.result;
-
             if (!idb.objectStoreNames.contains("upload_progress")) {
                 idb.createObjectStore("upload_progress", {
                     keyPath: "sessionKey"
