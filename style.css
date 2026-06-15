@@ -172,6 +172,26 @@ body {
 .progress { height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; }
 .progress-bar { height: 100%; background: linear-gradient(to right, #3b82f6, #6366f1); width: 0%; transition: width 0.2s ease; }
 
+.upload-progress-text {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.current-part {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.details-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
 .table-wrapper {
     max-height: 380px;
     overflow-y: auto;
