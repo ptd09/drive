@@ -60,7 +60,7 @@ const AUTH_HEADER = "140613";
 const DEFAULT_PART_SIZE = 45 * 1024 * 1024;
 
 // ĐỊNH NGHĨA SỐ LUỒNG TẢI LÊN ĐỒNG THỜI CÙNG LÚC
-const UPLOAD_CONCURRENCY = 3;
+const UPLOAD_CONCURRENCY = 1;
 
 // =========================================================
 // DOM REFERENCES
@@ -332,9 +332,9 @@ async function runUploadLoop() {
                     mimeType: progress.mimeType
                 });
 
-                if (!uploadState.fileId && result.file_id) {
-                    uploadState.fileId = result.file_id;
-                    progress.fileId = result.file_id;
+                if (!uploadState.fileId && result.id) {
+                    uploadState.fileId = result.id;
+                    progress.fileId = result.id;
                 }
 
                 const liveProgress = await dbGet("upload_progress", uploadState.sessionKey);
