@@ -160,7 +160,8 @@ function openDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open("tgdrive_db", 1);
         request.onupgradeneeded = () => {
-            const idb = request.result;
+            const idb = request.
+                ;
             if (!idb.objectStoreNames.contains("upload_progress")) {
                 idb.createObjectStore("upload_progress", { keyPath: "sessionKey" });
             }
