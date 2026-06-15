@@ -11,7 +11,7 @@
 
 // =========================================================
 // TIÊM HIỆU ỨNG CHUYỂN ĐỘNG CHO NÚT (BUTTON MOTION INTERACTIONS)
-// =========================================================
+// ========================================================
 (function injectButtonMotionCSS() {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -427,13 +427,24 @@ async function uploadPart(blob, meta) {
 
 function updateUploadUI(doneCount, totalParts) {
     const percent = Math.round((doneCount / totalParts) * 100);
-    uploadProgressBar.style.width = percent + "%";
-    managerUploadBar.style.width = percent + "%";
-    uploadProgressText.textContent = percent + "%";
-    uploadStatus.textContent = `Đang đẩy song song: đã xong ${doneCount}/${totalParts} part (${percent}%)`;
-    currentPartText.textContent = `Xử lý thành công: ${doneCount}/${totalParts} part`;
-}
 
+    if (uploadProgressBar)
+        uploadProgressBar.style.width = percent + "%";
+
+    if (managerUploadBar)
+        managerUploadBar.style.width = percent + "%";
+
+    if (uploadProgressText)
+        uploadProgressText.textContent = percent + "%";
+
+    if (uploadStatus)
+        uploadStatus.textContent =
+            `Đang đẩy song song: đã xong ${doneCount}/${totalParts} part (${percent}%)`;
+
+    if (currentPartText)
+        currentPartText.textContent =
+            `Xử lý thành công: ${doneCount}/${totalParts} part`;
+}
 // =========================================================
 // LOAD FILES / DETAILS
 // =========================================================
