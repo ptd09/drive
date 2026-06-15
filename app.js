@@ -1,17 +1,17 @@
 /**
- * TG-Drive Frontend Logic - PHIÊN BẢN HOÀN CHỈNH SIÊU CẤP V3
+ * TG-Drive Frontend Logic - PRO V4 (khớp với index.html "TG-Drive Pro")
  * -----------------------------------------------------------------
  * - Đăng nhập bằng mật khẩu tĩnh (lưu LocalStorage)
- * - Tối ưu Upload: Cắt file 45MB, ĐẨY SONG SONG 3 LUỒNG cùng lúc.
- * - IndexedDB: Khóa đồng bộ tiến trình đa luồng chống xung đột Race Condition.
+ * - Upload: cắt file 45MB, đẩy tuần tự (UPLOAD_CONCURRENCY luồng), IndexedDB resume.
  * - Download: StreamSaver tuần tự không ngốn RAM.
- * - Giải quyết lỗi xóa file lớn: Tự động bóc tách và xóa tuần tự từng Part từ Frontend chống Worker Timeout.
- * - Không sử dụng alert phiền toái khi chưa chọn file.
+ * - Xóa file lớn: bóc tách xóa từng part từ Frontend.
+ * - UI Pro: search, sort cột, checkbox + bulk delete, clear-all, kebab menu (...),
+ *   modal preview (ảnh / video / audio / pdf).
  */
 
 // =========================================================
-// TIÊM HIỆU ỨNG CHUYỂN ĐỘNG CHO NÚT (BUTTON MOTION INTERACTIONS)
-// ========================================================
+// TIÊM HIỆU ỨNG CHUYỂN ĐỘNG CHO NÚT
+// =========================================================
 (function injectButtonMotionCSS() {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -48,6 +48,42 @@
             25% { transform: translateX(-2px) translateY(-2px); }
             75% { transform: translateX(2px) translateY(-2px); }
         }
+        .action-cell { position: relative; }
+        .action-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            min-width: 160px;
+            background: rgba(30, 41, 59, 0.95);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .action-menu.open { display: flex; }
+        .action-menu button {
+            background: transparent;
+            border: none;
+            color: #f8fafc;
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 0;
+            width: 100%;
+        }
+        .action-menu button:hover {
+            background: rgba(255,255,255,0.08);
+            transform: none;
+            box-shadow: none;
+            filter: none;
+        }
+        .action-menu button.danger { color: #f87171; }
     `;
     document.head.appendChild(style);
 })();
@@ -56,11 +92,17 @@ const PASSWORD = "140613";
 const API = "https://drive-worker.phamdatt140613.workers.dev";
 const AUTH_HEADER = "140613";
 
-// NÂNG KÍCH THƯỚC TRẦN MẶC ĐỊNH LÊN 45MB ĐỂ GIẢM SỐ LƯỢNG HTTP REQUEST
+// Kích thước part mặc định (45MB)
 const DEFAULT_PART_SIZE = 45 * 1024 * 1024;
 
-// ĐỊNH NGHĨA SỐ LUỒNG TẢI LÊN ĐỒNG THỜI CÙNG LÚC
+// Số luồng tải lên đồng thời
 const UPLOAD_CONCURRENCY = 1;
+
+// Đuôi file hỗ trợ Preview
+const PREVIEW_IMAGE_EXT = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
+const PREVIEW_VIDEO_EXT = ["mp4", "webm", "ogg", "mov"];
+const PREVIEW_AUDIO_EXT = ["mp3", "wav", "m4a", "aac"];
+const PREVIEW_PDF_EXT = ["pdf"];
 
 // =========================================================
 // DOM REFERENCES
@@ -70,7 +112,7 @@ const dashboard = document.querySelector("#dashboard");
 const loginForm = document.querySelector(".login-form");
 const passwordInput = document.querySelector(".password-input");
 const uploadBtn = document.querySelector(".upload-btn");
-const uploadInput = document.querySelector(".input-file");
+const uploadInput = document.querySelector("#input-file");
 const partSizeSelect = document.querySelector("#part-size");
 const logoutBtn = document.querySelector(".logout-btn");
 const fileTableBody = document.querySelector(".file-table-body");
@@ -78,6 +120,9 @@ const partTableBody = document.querySelector(".part-table-body");
 const totalFiles = document.querySelector(".total-files");
 const totalSize = document.querySelector(".total-size");
 const usedSize = document.querySelector(".used-size");
+
+const uploadManagerPanel = document.querySelector("#upload-manager-panel");
+const uploadingFileName = document.querySelector(".uploading-file-name");
 const uploadProgressBar = document.querySelector(".upload-progress-bar");
 const uploadProgressText = document.querySelector(".upload-progress-text");
 const managerUploadBar = document.querySelector(".manager-upload-progress-bar");
@@ -86,27 +131,47 @@ const currentPartText = document.querySelector(".current-part");
 const uploadControls = document.querySelector("#upload-controls");
 const btnPause = document.querySelector("#btn-pause");
 const btnResume = document.querySelector("#btn-resume");
+
+const downloadManagerPanel = document.querySelector("#download-manager-panel");
+const downloadingFileName = document.querySelector(".downloading-file-name");
 const downloadProgressBar = document.querySelector(".download-progress-bar");
 const downloadStatus = document.querySelector(".download-status");
+
+const detailsPanel = document.querySelector("#details-panel");
 const detailId = document.querySelector(".detail-id");
 const detailName = document.querySelector(".detail-name");
 const detailSize = document.querySelector(".detail-size");
 const detailParts = document.querySelector(".detail-parts");
 const detailStatus = document.querySelector(".detail-status");
+
 const logList = document.querySelector(".log-list");
+
+const searchInput = document.querySelector("#search-input");
+const selectAllCheckbox = document.querySelector("#select-all");
+const bulkDeleteBtn = document.querySelector("#bulk-delete-btn");
+const selectCountSpan = document.querySelector("#select-count");
+const clearAllBtn = document.querySelector("#clear-all-storage-btn");
+
+const previewModal = document.querySelector("#preview-modal");
+const previewTitle = document.querySelector("#preview-title");
+const previewBody = document.querySelector("#preview-body");
 
 // =========================================================
 // STATE
 // =========================================================
+let allFiles = [];
+let sortKey = null;
+let sortDir = 1; // 1 = asc, -1 = desc
+
 let uploadState = {
-    file: null,        
-    fileId: "",         
+    file: null,
+    fileId: "",
     partSize: DEFAULT_PART_SIZE,
     totalParts: 0,
     currentPart: 1,
     paused: false,
     cancelled: false,
-    sessionKey: ""      
+    sessionKey: ""
 };
 
 init();
@@ -223,39 +288,51 @@ async function checkPendingUpload() {
 }
 
 // =========================================================
-// UPLOAD - ENGINE SONG SONG ĐA LUỒNG
+// UPLOAD
 // =========================================================
 uploadBtn.addEventListener("click", () => {
-    if (uploadState.paused === false && uploadState.file && !uploadState.cancelled) {
+    // upload-btn chỉ mở dialog chọn file (onclick trong HTML),
+    // việc bắt đầu upload thực sự diễn ra khi input change
+});
+
+uploadInput.addEventListener("change", () => {
+    if (uploadState.file && !uploadState.paused && !uploadState.cancelled) {
         return;
     }
     startUpload();
 });
 
-btnPause.addEventListener("click", () => {
-    uploadState.paused = true;
-    uploadBtn.classList.remove("btn-pulse-active");
-    uploadStatus.textContent = `Đang hoãn... Đã lưu tạm bộ gộp part.`;
-    addLog("Bấm tạm dừng tiến trình upload");
-});
+if (btnPause) {
+    btnPause.addEventListener("click", () => {
+        uploadState.paused = true;
+        if (uploadBtn) uploadBtn.classList.remove("btn-pulse-active");
+        if (uploadStatus) uploadStatus.textContent = `Đã tạm dừng`;
+        btnResume.style.display = "inline-block";
+        btnPause.style.display = "none";
+        addLog("Bấm tạm dừng tiến trình upload");
+    });
+}
 
-btnResume.addEventListener("click", () => {
-    if (!uploadState.file) {
-        alert("Chưa chọn file để resume. Vui lòng chọn lại file gốc.");
-        return;
-    }
-    if (!uploadState.paused) return;
+if (btnResume) {
+    btnResume.addEventListener("click", () => {
+        if (!uploadState.file) {
+            addLog("Chưa chọn file để resume. Vui lòng chọn lại file gốc.");
+            return;
+        }
+        if (!uploadState.paused) return;
 
-    uploadState.paused = false;
-    uploadBtn.classList.add("btn-pulse-active");
-    addLog("Tiếp tục tăng tốc luồng upload");
-    runUploadLoop();
-});
+        uploadState.paused = false;
+        if (uploadBtn) uploadBtn.classList.add("btn-pulse-active");
+        btnResume.style.display = "none";
+        btnPause.style.display = "inline-block";
+        addLog("Tiếp tục upload");
+        runUploadLoop();
+    });
+}
 
 async function startUpload() {
     const file = uploadInput.files[0];
 
-    // GIỮ NGUYÊN: BỎ ALERT PHIỀN TOÁI KHI CHƯA CHỌN FILE
     if (!file) {
         addLog("Hệ thống: Chưa có tệp tin nào được chọn để tải lên.");
         return;
@@ -269,7 +346,7 @@ async function startUpload() {
     const totalParts = Math.ceil(file.size / partSize);
 
     if (progress && progress.totalParts === totalParts) {
-        addLog(`Phát hiện tiến trình cũ: đã xong ${progress.doneParts.length}/${totalParts} part. Đang tăng tốc...`);
+        addLog(`Phát hiện tiến trình cũ: đã xong ${progress.doneParts.length}/${totalParts} part. Đang tiếp tục...`);
     } else {
         progress = {
             sessionKey,
@@ -295,12 +372,15 @@ async function startUpload() {
         sessionKey
     };
 
+    if (uploadManagerPanel) uploadManagerPanel.style.display = "block";
+    if (uploadingFileName) uploadingFileName.textContent = file.name;
+
     uploadControls.style.display = "flex";
     btnResume.style.display = "none";
     btnPause.style.display = "inline-block";
-    uploadBtn.classList.add("btn-pulse-active"); 
+    if (uploadBtn) uploadBtn.classList.add("btn-pulse-active");
 
-    addLog("Bắt đầu mở pool luồng song song cho: " + file.name);
+    addLog("Bắt đầu upload: " + file.name);
     runUploadLoop();
 }
 
@@ -352,9 +432,9 @@ async function runUploadLoop() {
                         liveProgress.doneParts.sort((a, b) => a - b);
                     }
                     if (uploadState.fileId) liveProgress.fileId = uploadState.fileId;
-                    
+
                     await dbPut("upload_progress", liveProgress);
-                    
+
                     progress.doneParts = liveProgress.doneParts;
                     uploadState.currentPart = liveProgress.doneParts.length;
                 }
@@ -365,13 +445,13 @@ async function runUploadLoop() {
             } catch (err) {
                 console.error(err);
                 pendingPartsQueue.unshift(partIndex);
-                uploadStatus.textContent = `Gặp sự cố kết nối tại Part ${partIndex}. Đang tạm hoãn luồng...`;
+                if (uploadStatus) uploadStatus.textContent = `Lỗi tại Part ${partIndex}. Tạm hoãn.`;
                 addLog(`Lỗi luồng Part ${partIndex}: ${err.message || err}`);
-                
+
                 uploadState.paused = true;
                 btnResume.style.display = "inline-block";
                 btnPause.style.display = "none";
-                uploadBtn.classList.remove("btn-pulse-active");
+                if (uploadBtn) uploadBtn.classList.remove("btn-pulse-active");
                 return;
             }
         }
@@ -387,16 +467,23 @@ async function runUploadLoop() {
 
     const finalCheck = await dbGet("upload_progress", uploadState.sessionKey);
     if (!uploadState.paused && !uploadState.cancelled && finalCheck && finalCheck.doneParts.length === totalParts) {
-        uploadProgressBar.style.width = "100%";
-        managerUploadBar.style.width = "100%";
-        uploadProgressText.textContent = "100%";
-        uploadStatus.textContent = "Hoàn tất";
-        currentPartText.textContent = `Part hiện tại: ${totalParts}/${totalParts}`;
+        if (uploadProgressBar) uploadProgressBar.style.width = "100%";
+        if (managerUploadBar) managerUploadBar.style.width = "100%";
+        if (uploadProgressText) uploadProgressText.textContent = "100%";
+        if (uploadStatus) uploadStatus.textContent = "Hoàn tất";
+        if (currentPartText) currentPartText.textContent = `Đã xong ${totalParts}/${totalParts} part`;
+
         uploadControls.style.display = "none";
-        uploadBtn.classList.remove("btn-pulse-active");
+        if (uploadBtn) uploadBtn.classList.remove("btn-pulse-active");
 
         await dbDelete("upload_progress", uploadState.sessionKey);
-        addLog("Siêu tốc upload hoàn thành: " + uploadState.file.name);
+        addLog("Upload hoàn thành: " + uploadState.file.name);
+
+        setTimeout(() => {
+            if (uploadManagerPanel) uploadManagerPanel.style.display = "none";
+        }, 1500);
+
+        uploadInput.value = "";
         loadFiles();
     }
 }
@@ -409,7 +496,6 @@ async function uploadPart(blob, meta) {
     form.append("part_index", String(meta.partIndex));
     form.append("part_count", String(meta.totalParts));
     form.append("mime_type", meta.mimeType || "application/octet-stream");
-
     form.append("file_id", meta.fileId || "");
 
     const response = await fetch(API + "/upload", {
@@ -426,168 +512,429 @@ async function uploadPart(blob, meta) {
 }
 
 function updateUploadUI(doneCount, totalParts) {
-    const percent = Math.round((doneCount / totalParts) * 100);
+    const percent = totalParts > 0 ? Math.round((doneCount / totalParts) * 100) : 0;
 
-    if (uploadProgressBar)
-        uploadProgressBar.style.width = percent + "%";
-
-    if (managerUploadBar)
-        managerUploadBar.style.width = percent + "%";
-
-    if (uploadProgressText)
-        uploadProgressText.textContent = percent + "%";
-
-    if (uploadStatus)
-        uploadStatus.textContent =
-            `Đang đẩy song song: đã xong ${doneCount}/${totalParts} part (${percent}%)`;
-
-    if (currentPartText)
-        currentPartText.textContent =
-            `Xử lý thành công: ${doneCount}/${totalParts} part`;
+    if (uploadProgressBar) uploadProgressBar.style.width = percent + "%";
+    if (managerUploadBar) managerUploadBar.style.width = percent + "%";
+    if (uploadProgressText) uploadProgressText.textContent = percent + "%";
+    if (uploadStatus) uploadStatus.textContent = `${percent}%`;
+    if (currentPartText) currentPartText.textContent = `Đã xong ${doneCount}/${totalParts} part`;
 }
+
 // =========================================================
-// LOAD FILES / DETAILS
+// LOAD FILES
 // =========================================================
 async function loadFiles() {
     try {
         const response = await fetch(API + "/files", { headers: { "Authorization": AUTH_HEADER } });
         const files = await response.json();
         if (!Array.isArray(files)) { console.error(files); return; }
-        renderFiles(files);
-    } catch (error) { console.error(error); addLog("Không tải được danh sách file"); }
+        allFiles = files;
+        renderFiles();
+    } catch (error) {
+        console.error(error);
+        addLog("Không tải được danh sách file");
+    }
 }
 
-function renderFiles(files) {
+// =========================================================
+// SEARCH + SORT + RENDER
+// =========================================================
+if (searchInput) {
+    searchInput.addEventListener("input", renderFiles);
+}
+
+window.sortTable = function(colIndex) {
+    const keyMap = { 1: "name", 2: "size", 3: "created_at" };
+    const key = keyMap[colIndex];
+    if (!key) return;
+
+    if (sortKey === key) {
+        sortDir = -sortDir;
+    } else {
+        sortKey = key;
+        sortDir = 1;
+    }
+    renderFiles();
+};
+
+function getFilteredSortedFiles() {
+    let files = allFiles.slice();
+
+    const keyword = (searchInput && searchInput.value || "").trim().toLowerCase();
+    if (keyword) {
+        files = files.filter(f => (f.name || "").toLowerCase().includes(keyword));
+    }
+
+    if (sortKey) {
+        files.sort((a, b) => {
+            let va = a[sortKey];
+            let vb = b[sortKey];
+
+            if (sortKey === "name") {
+                va = (va || "").toLowerCase();
+                vb = (vb || "").toLowerCase();
+                return va.localeCompare(vb) * sortDir;
+            }
+
+            va = Number(va || 0);
+            vb = Number(vb || 0);
+            return (va - vb) * sortDir;
+        });
+    }
+
+    return files;
+}
+
+function renderFiles() {
+    const files = getFilteredSortedFiles();
+
     fileTableBody.innerHTML = "";
+
     let totalBytes = 0;
+    allFiles.forEach(f => totalBytes += Number(f.size || 0));
 
     files.forEach(file => {
-        totalBytes += Number(file.size || 0);
         const tr = document.createElement("tr");
+        tr.dataset.id = file.id;
+
         tr.innerHTML = `
-        <td>${file.id || "-"}</td>
-        <td style="font-weight:500;">${file.name || "-"}</td>
+        <td><input type="checkbox" class="row-check" data-id="${file.id}"></td>
+        <td>
+            <span class="file-name-cell" title="${escapeHtml(file.name || "")}">${escapeHtml(file.name || "-")}</span>
+        </td>
         <td>${formatSize(file.size || 0)}</td>
-        <td>${file.part_count || 1}</td>
         <td>${formatDate(file.created_at)}</td>
-        <td><span class="badge ${file.status === "uploaded" ? "badge-success" : "badge-warning"}">${file.status || "uploaded"}</span></td>
-        <td class="actions">
-            <button class="btn btn-secondary" onclick="showDetails('${file.id}')">Details</button>
-            <button class="btn btn-success" onclick="downloadFile('${file.id}')">Download</button>
-            <button class="btn btn-danger" onclick="deleteFile('${file.id}')">Delete</button>
+        <td class="action-cell" style="text-align:right;">
+            <button class="action-dots" data-id="${file.id}">&#8942;</button>
+            <div class="action-menu" data-menu-for="${file.id}">
+                ${canPreviewFile(file) ? `<button data-action="preview" data-id="${file.id}">👁 Xem trước</button>` : ""}
+                <button data-action="details" data-id="${file.id}">ℹ Chi tiết</button>
+                <button data-action="download" data-id="${file.id}">⬇ Tải xuống</button>
+                <button class="danger" data-action="delete" data-id="${file.id}">🗑 Xóa</button>
+            </div>
         </td>
         `;
+
         fileTableBody.appendChild(tr);
     });
-    totalFiles.textContent = files.length;
+
+    totalFiles.textContent = allFiles.length;
     totalSize.textContent = formatSize(totalBytes);
-    usedSize.textContent = formatSize(totalBytes);
+
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    updateSelectCount();
 }
 
-window.showDetails = async function(id) {
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+// =========================================================
+// ACTION DOTS (KEBAB MENU)
+// =========================================================
+document.addEventListener("click", e => {
+    const dots = e.target.closest(".action-dots");
+
+    // đóng tất cả menu trước
+    document.querySelectorAll(".action-menu.open").forEach(m => {
+        if (!dots || m.dataset.menuFor !== dots.dataset.id) {
+            m.classList.remove("open");
+        }
+    });
+
+    if (dots) {
+        const menu = document.querySelector(`.action-menu[data-menu-for="${dots.dataset.id}"]`);
+        if (menu) menu.classList.toggle("open");
+        return;
+    }
+
+    const actionBtn = e.target.closest(".action-menu button");
+    if (actionBtn) {
+        const id = actionBtn.dataset.id;
+        const action = actionBtn.dataset.action;
+        actionBtn.closest(".action-menu").classList.remove("open");
+
+        if (action === "preview") previewFile(id);
+        if (action === "details") showDetails(id);
+        if (action === "download") downloadFile(id);
+        if (action === "delete") deleteFile(id);
+    }
+});
+
+// =========================================================
+// CHECKBOX SELECT-ALL + BULK DELETE
+// =========================================================
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener("change", () => {
+        document.querySelectorAll(".row-check").forEach(cb => {
+            cb.checked = selectAllCheckbox.checked;
+        });
+        updateSelectCount();
+    });
+}
+
+fileTableBody.addEventListener("change", e => {
+    if (e.target.classList.contains("row-check")) {
+        updateSelectCount();
+    }
+});
+
+function updateSelectCount() {
+    const checked = document.querySelectorAll(".row-check:checked");
+    if (selectCountSpan) selectCountSpan.textContent = checked.length;
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.style.display = checked.length > 0 ? "inline-flex" : "none";
+    }
+}
+
+if (bulkDeleteBtn) {
+    bulkDeleteBtn.addEventListener("click", async () => {
+        const checked = Array.from(document.querySelectorAll(".row-check:checked"));
+        if (checked.length === 0) return;
+
+        if (!confirm(`Xóa ${checked.length} file đã chọn?`)) return;
+
+        for (const cb of checked) {
+            const id = cb.dataset.id;
+            await deleteFileSilently(id);
+        }
+
+        loadFiles();
+    });
+}
+
+if (clearAllBtn) {
+    clearAllBtn.addEventListener("click", async () => {
+        if (allFiles.length === 0) {
+            addLog("Kho lưu trữ đang trống.");
+            return;
+        }
+
+        if (!confirm(`XÓA SẠCH toàn bộ ${allFiles.length} file trong kho? Hành động này không thể hoàn tác.`)) return;
+
+        addLog("Bắt đầu xóa sạch toàn bộ kho...");
+
+        for (const file of allFiles.slice()) {
+            await deleteFileSilently(file.id);
+        }
+
+        addLog("Đã xóa sạch toàn bộ kho.");
+        loadFiles();
+    });
+}
+
+// =========================================================
+// FILE DETAILS
+// =========================================================
+async function showDetails(id) {
     try {
         const response = await fetch(API + "/file/" + id, { headers: { "Authorization": AUTH_HEADER } });
         const file = await response.json();
-        detailId.textContent = "ID: " + (file.id || "-");
-        detailName.textContent = "Tên: " + (file.name || "-");
-        detailSize.textContent = "Dung lượng: " + formatSize(file.size || 0);
-        detailParts.textContent = "Part Count: " + (file.part_count || 1);
-        detailStatus.textContent = "Trạng thái: " + (file.status || "-");
 
-        partTableBody.innerHTML = "";
-        if (Array.isArray(file.parts)) {
-            file.parts.forEach(part => {
-                const row = document.createElement("tr");
-                row.innerHTML = `<td>${part.index}</td><td>${part.name}</td><td>${part.file_id}</td><td>${part.message_id}</td>`;
-                partTableBody.appendChild(row);
-            });
+        if (detailsPanel) detailsPanel.style.display = "block";
+
+        if (detailId) detailId.textContent = "ID: " + (file.id || "-");
+        if (detailName) detailName.textContent = "Tên: " + (file.name || "-");
+        if (detailSize) detailSize.textContent = "Dung lượng: " + formatSize(file.size || 0);
+        if (detailParts) detailParts.textContent = "Part Count: " + (file.part_count || 1);
+        if (detailStatus) detailStatus.textContent = "Trạng thái: " + (file.status || "-");
+
+        if (partTableBody) {
+            partTableBody.innerHTML = "";
+            if (Array.isArray(file.parts)) {
+                file.parts.forEach(part => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `<td>${part.index}</td><td>${part.name || "-"}</td><td>${part.file_id || "-"}</td><td>${part.message_id || "-"}</td>`;
+                    partTableBody.appendChild(row);
+                });
+            }
         }
-    } catch (error) { console.error(error); }
-};
+
+        if (detailsPanel) detailsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    } catch (error) {
+        console.error(error);
+        addLog("Lỗi tải chi tiết file: " + (error.message || error));
+    }
+}
 
 // =========================================================
-// SỬA ĐỔI QUAN TRỌNG: XÓA FILE LỚN THEO TỪNG PART TỪ FRONTEND
+// DELETE FILE (xóa từng part rồi xóa metadata)
 // =========================================================
-window.deleteFile = async function(id) {
-    if (!confirm("Bạn chắc chắn muốn xóa file này và TẤT CẢ các Part liên quan trên Telegram chứ?")) return;
-    
-    const targetBtn = document.querySelector(`button[onclick*="${id}"]`);
-    if (targetBtn) targetBtn.classList.add("btn-pulse-active");
-
+async function deleteFileSilently(id) {
     addLog(`[Xóa] Bắt đầu quét thông tin cấu trúc tệp tin ID: ${id}`);
 
     try {
-        // Bước 1: Gọi API chi tiết để lấy tổng số part của file lớn này
         const responseDetails = await fetch(API + "/file/" + id, { headers: { "Authorization": AUTH_HEADER } });
         const fileMeta = await responseDetails.json();
         const totalParts = fileMeta.part_count || (fileMeta.parts ? fileMeta.parts.length : 1);
 
         addLog(`[Xóa] Phát hiện file "${fileMeta.name || id}" có tổng cộng ${totalParts} part.`);
 
-        // Bước 2: Vòng lặp phát lệnh xóa tuần tự từng part một, tránh làm Worker dính lỗi Timeout
         for (let partIndex = 1; partIndex <= totalParts; partIndex++) {
-            addLog(`[Xóa] Đang tiến hành xóa dọn dẹp dữ liệu Part ${partIndex}/${totalParts}...`);
-            
-            // Gửi query parameter chỉ định rõ part cần xóa cho Worker xử lý nhẹ nhàng gọn gàng
+            addLog(`[Xóa] Đang xóa Part ${partIndex}/${totalParts}...`);
             await fetch(`${API}/file/${id}?part=${partIndex}&part_index=${partIndex}`, {
                 method: "DELETE",
                 headers: { "Authorization": AUTH_HEADER }
             });
         }
 
-        // Bước 3: Gửi lệnh xóa gốc cuối cùng để xóa bản ghi metadata trong Database của Worker
-        addLog("[Xóa] Đang giải phóng bản ghi dữ liệu tệp tin gốc khỏi hệ thống...");
         const finalDeleteRes = await fetch(API + "/file/" + id, {
             method: "DELETE",
             headers: { "Authorization": AUTH_HEADER }
         });
 
         if (finalDeleteRes.ok) {
-            addLog(`[Thành công] Đã xóa sạch 100% tệp tin và các Part liên quan: ${fileMeta.name || id}`);
+            addLog(`[Thành công] Đã xóa: ${fileMeta.name || id}`);
         } else {
-            addLog(`[Cảnh báo] Bản ghi dữ liệu cuối phản hồi mã: ${finalDeleteRes.status}`);
+            addLog(`[Cảnh báo] Phản hồi xóa: ${finalDeleteRes.status}`);
         }
-        
-        loadFiles();
+
     } catch (error) {
-        console.error("Lỗi trong quá trình xử lý xóa theo part:", error);
-        addLog(`[Lỗi] Xóa theo part thất bại: ${error.message}. Thử cấu hình xóa cưỡng chế bản ghi gốc...`);
-        
-        // Cơ chế dự phòng (Fallback): Gửi lệnh xóa thẳng tệp nếu bước lấy thông tin part bị lỗi
+        console.error("Lỗi xóa theo part:", error);
+        addLog(`[Lỗi] Xóa theo part thất bại: ${error.message}. Thử xóa trực tiếp...`);
+
         try {
             await fetch(API + "/file/" + id, { method: "DELETE", headers: { "Authorization": AUTH_HEADER } });
-            addLog("[Xóa] Đã gửi lệnh dọn dẹp trực tiếp.");
-            loadFiles();
+            addLog("[Xóa] Đã gửi lệnh xóa trực tiếp.");
         } catch (fallbackError) {
-            addLog(`[Thất bại hoàn toàn] Không thể xóa: ${fallbackError.message}`);
+            addLog(`[Thất bại] Không thể xóa: ${fallbackError.message}`);
         }
-    } finally {
-        if (targetBtn) targetBtn.classList.remove("btn-pulse-active");
     }
+}
+
+async function deleteFile(id) {
+    if (!confirm("Bạn chắc chắn muốn xóa file này và TẤT CẢ các Part liên quan trên Telegram chứ?")) return;
+
+    const dots = document.querySelector(`.action-dots[data-id="${id}"]`);
+    if (dots) dots.classList.add("btn-pulse-active");
+
+    await deleteFileSilently(id);
+
+    if (dots) dots.classList.remove("btn-pulse-active");
+
+    loadFiles();
+}
+
+// =========================================================
+// PREVIEW MODAL
+// =========================================================
+function getExt(name) {
+    const dot = (name || "").lastIndexOf(".");
+    if (dot === -1) return "";
+    return name.slice(dot + 1).toLowerCase().split(".part")[0];
+}
+
+function canPreviewFile(file) {
+    const ext = getExt(file.name);
+    const isMedia =
+        PREVIEW_IMAGE_EXT.includes(ext) ||
+        PREVIEW_VIDEO_EXT.includes(ext) ||
+        PREVIEW_AUDIO_EXT.includes(ext) ||
+        PREVIEW_PDF_EXT.includes(ext);
+
+    return isMedia && (file.part_count || 1) <= 1;
+}
+
+async function previewFile(id) {
+    if (!previewModal) return;
+
+    previewTitle.textContent = "Đang tải xem trước...";
+    previewBody.innerHTML = `<p style="color:#94a3b8;">Đang tải dữ liệu...</p>`;
+    previewModal.style.display = "flex";
+
+    try {
+        const response = await fetch(API + "/file/" + id, { headers: { "Authorization": AUTH_HEADER } });
+        const file = await response.json();
+
+        if (!file || !Array.isArray(file.parts) || file.parts.length !== 1) {
+            previewBody.innerHTML = `<p style="color:#94a3b8;">File không hỗ trợ xem trước (nhiều part).</p>`;
+            previewTitle.textContent = file.name || "Xem trước";
+            return;
+        }
+
+        const part = file.parts[0];
+        const ext = getExt(file.name);
+
+        previewTitle.textContent = file.name || "Xem trước";
+
+        const mediaResponse = await fetch(API + "/download/" + part.file_id, {
+            headers: { "Authorization": AUTH_HEADER }
+        });
+
+        if (!mediaResponse.ok || !mediaResponse.body) {
+            previewBody.innerHTML = `<p style="color:#94a3b8;">Không tải được dữ liệu xem trước.</p>`;
+            return;
+        }
+
+        const blob = await mediaResponse.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        if (PREVIEW_IMAGE_EXT.includes(ext)) {
+            previewBody.innerHTML = `<img src="${objectUrl}" alt="${escapeHtml(file.name)}">`;
+        } else if (PREVIEW_VIDEO_EXT.includes(ext)) {
+            previewBody.innerHTML = `<video src="${objectUrl}" controls autoplay></video>`;
+        } else if (PREVIEW_AUDIO_EXT.includes(ext)) {
+            previewBody.innerHTML = `<audio src="${objectUrl}" controls autoplay></audio>`;
+        } else if (PREVIEW_PDF_EXT.includes(ext)) {
+            const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            previewBody.innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
+        } else {
+            previewBody.innerHTML = `<p style="color:#94a3b8;">Định dạng không hỗ trợ xem trước.</p>`;
+        }
+
+    } catch (error) {
+        console.error(error);
+        previewBody.innerHTML = `<p style="color:#94a3b8;">Lỗi khi tải xem trước.</p>`;
+    }
+}
+
+window.closePreview = function() {
+    if (!previewModal) return;
+
+    previewModal.style.display = "none";
+
+    const media = previewBody.querySelector("img, video, audio, iframe");
+    if (media) {
+        const src = media.tagName === "IFRAME" ? media.src : media.src;
+        if (src && src.startsWith("blob:")) {
+            URL.revokeObjectURL(src);
+        }
+    }
+
+    previewBody.innerHTML = "";
 };
+
+if (previewModal) {
+    previewModal.addEventListener("click", e => {
+        if (e.target === previewModal) closePreview();
+    });
+}
 
 // =========================================================
 // DOWNLOAD - STREAMSAVER TUẦN TỰ KHÔNG NGỐN RAM
 // =========================================================
-window.downloadFile = async function(id) {
-    const targetBtn = document.querySelector(`button[onclick*="${id}"]`);
-    if (targetBtn) targetBtn.classList.add("btn-pulse-active");
-
+async function downloadFile(id) {
     addLog("Bắt đầu download: " + id);
+
     let fileMeta;
     try {
         const response = await fetch(API + "/file/" + id, { headers: { "Authorization": AUTH_HEADER } });
         fileMeta = await response.json();
     } catch (error) {
         console.error(error);
-        downloadStatus.textContent = "Lỗi: không lấy được metadata";
-        if (targetBtn) targetBtn.classList.remove("btn-pulse-active");
+        if (downloadStatus) downloadStatus.textContent = "Lỗi: không lấy được metadata";
         return;
     }
 
     if (!fileMeta || !Array.isArray(fileMeta.parts) || fileMeta.parts.length === 0) {
-        alert("File không có dữ liệu part để tải");
-        if (targetBtn) targetBtn.classList.remove("btn-pulse-active");
+        addLog("File không có dữ liệu part để tải");
         return;
     }
 
@@ -596,8 +943,10 @@ window.downloadFile = async function(id) {
     const fileStream = streamSaver.createWriteStream(fileMeta.name || "download.bin", { size: fileMeta.size || undefined });
     const writer = fileStream.getWriter();
 
-    downloadProgressBar.style.width = "0%";
-    downloadStatus.textContent = `Đang tải part 1/${totalParts}...`;
+    if (downloadManagerPanel) downloadManagerPanel.style.display = "block";
+    if (downloadingFileName) downloadingFileName.textContent = fileMeta.name || id;
+    if (downloadProgressBar) downloadProgressBar.style.width = "0%";
+    if (downloadStatus) downloadStatus.textContent = `0%`;
 
     let totalDownloaded = 0;
     const totalSizeBytes = Number(fileMeta.size || 0);
@@ -605,7 +954,6 @@ window.downloadFile = async function(id) {
     try {
         for (let i = 0; i < totalParts; i++) {
             const part = parts[i];
-            downloadStatus.textContent = `Đang tải part ${i + 1}/${totalParts} (${part.name})`;
             const response = await fetch(API + "/download/" + part.file_id, { headers: { "Authorization": AUTH_HEADER } });
 
             if (!response.ok || !response.body) { throw new Error(`Không tải được part ${i + 1}`); }
@@ -618,25 +966,28 @@ window.downloadFile = async function(id) {
                 totalDownloaded += value.length;
                 if (totalSizeBytes > 0) {
                     const percent = Math.min(100, Math.round((totalDownloaded / totalSizeBytes) * 100));
-                    downloadProgressBar.style.width = percent + "%";
-                    downloadStatus.textContent = `Đang tải: ${percent}% (Part ${i + 1}/${totalParts})`;
+                    if (downloadProgressBar) downloadProgressBar.style.width = percent + "%";
+                    if (downloadStatus) downloadStatus.textContent = `${percent}%`;
                 }
             }
             addLog(`Đã tải xong part ${i + 1}/${totalParts}`);
         }
         await writer.close();
-        downloadProgressBar.style.width = "100%";
-        downloadStatus.textContent = "Hoàn tất download";
+        if (downloadProgressBar) downloadProgressBar.style.width = "100%";
+        if (downloadStatus) downloadStatus.textContent = "Hoàn tất";
         addLog("Download hoàn tất: " + (fileMeta.name || id));
+
+        setTimeout(() => {
+            if (downloadManagerPanel) downloadManagerPanel.style.display = "none";
+        }, 1500);
+
     } catch (error) {
         console.error(error);
-        downloadStatus.textContent = "Lỗi download: " + (error.message || error);
+        if (downloadStatus) downloadStatus.textContent = "Lỗi: " + (error.message || error);
         addLog("Download lỗi: " + (error.message || error));
         try { await writer.abort(); } catch (e) {}
-    } finally {
-        if (targetBtn) targetBtn.classList.remove("btn-pulse-active");
     }
-};
+}
 
 // =========================================================
 // UTILS
