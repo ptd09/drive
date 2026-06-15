@@ -52,7 +52,7 @@
                 <button class="btn btn-success upload-btn" onclick="document.getElementById('input-file').click()">
                     Tải Lên File
                 </button>
-                <button class="btn btn-danger" id="bulk-delete-btn" sftyle="display: none;">
+                <button class="btn btn-danger" id="bulk-delete-btn" style="display: none;">
                     Xóa mục đã chọn (<span id="select-count">0</span>)
                 </button>
                 <button class="btn btn-danger" id="clear-all-storage-btn" style="background: #be123c;">
@@ -61,15 +61,24 @@
             </div>
         </div>
 
-<section class="upload-manager" id="upload-manager-panel" style="display: none;">
+        <section class="upload-manager" id="upload-manager-panel" style="display: none;">
             <div class="manager-card">
                 <div class="manager-info">
                     <span class="uploading-file-name">Đang xử lý file...</span>
                     <span class="upload-status">0%</span>
                 </div>
+
                 <div class="progress">
                     <div class="progress-bar manager-upload-progress-bar"></div>
                 </div>
+
+                <!-- thanh phụ + text % cho updateUploadUI() -->
+                <div class="progress" style="margin-top: 6px;">
+                    <div class="progress-bar upload-progress-bar"></div>
+                </div>
+                <p class="upload-progress-text">0%</p>
+                <p class="current-part">Đã xong 0/0 part</p>
+
                 <div class="control-actions" id="upload-controls" style="margin-top: 10px; display: none; gap: 8px;">
                     <button class="btn btn-secondary" id="btn-pause">Tạm dừng</button>
                     <button class="btn btn-success" id="btn-resume" style="display: none;">Tiếp tục</button>
@@ -103,6 +112,31 @@
                         </tr>
                     </thead>
                     <tbody class="file-table-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Chi tiết file + danh sách part (đề phòng app.js còn dùng) -->
+        <section class="details" id="details-panel" style="display: none;">
+            <h2 class="section-title">Chi Tiết File</h2>
+            <div class="details-card">
+                <p class="detail-id">ID: -</p>
+                <p class="detail-name">Tên: -</p>
+                <p class="detail-size">Dung lượng: -</p>
+                <p class="detail-parts">Part Count: -</p>
+                <p class="detail-status">Trạng thái: -</p>
+            </div>
+            <div class="table-wrapper">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Part</th>
+                            <th>Tên</th>
+                            <th>File ID</th>
+                            <th>Message ID</th>
+                        </tr>
+                    </thead>
+                    <tbody class="part-table-body"></tbody>
                 </table>
             </div>
         </section>
