@@ -402,7 +402,7 @@ async function uploadPart(blob, meta) {
     form.append("part_count", String(meta.totalParts));
     form.append("mime_type", meta.mimeType || "application/octet-stream");
 
-    if (meta.fileId) { form.append("file_id", meta.fileId); }
+    form.append("file_id", meta.fileId || "");
 
     const response = await fetch(API + "/upload", {
         method: "POST",
