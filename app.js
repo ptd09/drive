@@ -564,25 +564,25 @@ async function uploadPart(blob, meta) {
 }
 
 function updateUploadUI(doneCount, totalParts) {
-    const percent = totalParts > 0 ? Math.round((doneCount / totalParts) * 100) : 0;
+    const percent = Math.round((doneCount / totalParts) * 100);
+
     if (uploadProgressBar)
-    uploadProgressBar.style.width = percent + "%";
+        uploadProgressBar.style.width = percent + "%";
 
-if (managerUploadBar)
-    managerUploadBar.style.width = percent + "%";
+    if (managerUploadBar)
+        managerUploadBar.style.width = percent + "%";
 
-if (uploadProgressText)
-    uploadProgressText.textContent = percent + "%";
+    if (uploadProgressText)
+        uploadProgressText.textContent = percent + "%";
 
-if (uploadStatus)
-    uploadStatus.textContent =
-        `Đang đẩy song song: đã xong ${doneCount}/${totalParts} part (${percent}%)`;
+    if (uploadStatus)
+        uploadStatus.textContent =
+            `Đang đẩy song song: đã xong ${doneCount}/${totalParts} part (${percent}%)`;
 
-if (currentPartText)
-    currentPartText.textContent =
-        `Xử lý thành công: ${doneCount}/${totalParts} part`;
+    if (currentPartText)
+        currentPartText.textContent =
+            `Part: ${doneCount}/${totalParts}`;
 }
-
 // =========================================================
 // LOAD DATABANK FILES
 // =========================================================
