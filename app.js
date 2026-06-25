@@ -131,11 +131,11 @@ const storageProgressFill = document.querySelector(".storage-progress-fill");
 // Panels Tiến trình
 const uploadManagerPanel = document.querySelector("#upload-manager-panel") || document.querySelector(".mini-progress-panel");
 const uploadingFileName = document.querySelector(".uploading-file-name") || document.querySelector(".process-filename");
-const uploadProgressBar = document.querySelector(".upload-progress-bar") || document.querySelector(".liquid-progress-bar");
-const uploadProgressText = document.querySelector(".upload-progress-text") || document.querySelector(".process-speed-text");
+const uploadProgressBar = document.getElementById("download-progress-bar");
+const uploadProgressText = document.getElementById("progress-speed");
 const managerUploadBar = document.querySelector(".manager-upload-progress-bar") || document.querySelector(".liquid-progress-bar");
 const uploadStatus = document.querySelector(".upload-status") || document.querySelector(".process-status-row span:last-child");
-const currentPartText = document.querySelector(".current-part") || document.querySelector(".process-status-row span:first-child");
+const currentPartText = document.getElementById("progress-parts-count");
 const uploadControls = document.querySelector("#upload-controls") || document.querySelector(".process-controls-row");
 const btnPause = document.querySelector("#btn-pause") || document.querySelector(".btn-ctrl-action:not(.danger)");
 const btnResume = document.querySelector("#btn-resume");
