@@ -3,159 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Drive Pro</title>
+    <title>TG-Drive Pro — Hệ thống lưu trữ đám mây tối thượng</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="app">
+<body class="app-container">
+
+    <div class="background-glow">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
 
     <section id="login-page" class="login-page">
         <div class="login-card">
-            <h1 class="logo">TG-Drive Pro</h1>
-            <p class="subtitle">Nhập mật mã để kết nối kho lưu trữ</p>
+            <div class="login-logo-zone">
+                <i class="fa-solid fa-cloud-bolt login-icon"></i>
+                <h1 class="logo-text">TG-Drive<span>Pro</span></h1>
+            </div>
+            <p class="subtitle">Hệ thống lưu trữ đám mây cá nhân hóa sử dụng Telegram Endpoint</p>
             <form class="login-form">
-                <input class="input password-input" type="password" placeholder="Mật khẩu hệ thống" required>
-                <button class="btn btn-primary" type="submit">Xác thực</button>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock input-icon-inner"></i>
+                    <input class="input password-input" type="password" placeholder="Nhập mã khóa hệ thống..." required>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit">
+                    <span>Xác thực kết nối</span>
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
             </form>
+            <div class="login-footer">Protected by Cloudflare Worker Shield</div>
         </div>
     </section>
 
-    <section id="dashboard" class="dashboard" style="display: none;">
-        <header class="header">
-            <div class="header-left">
-                <h1 class="header-title">Telegram Drive</h1>
-                <span class="status-badge">Hệ thống ổn định</span>
+    <section id="dashboard" class="dashboard-layout" style="display: none;">
+        
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-cloud-bolt brand-icon"></i>
+                <span class="brand-text">TG-Drive</span>
             </div>
-            <button class="btn btn-danger logout-btn">Đăng Xuất</button>
-        </header>
 
-        <section class="stats">
-            <div class="stat-card">
-                <h3>Tổng File</h3>
-                <p class="total-files">0</p>
-            </div>
-            <div class="stat-card">
-                <h3>Dung Lượng Sử Dụng</h3>
-                <p class="total-size">0 B</p>
-            </div>
-            <div class="stat-card">
-                <h3>Băng Thông Proxy</h3>
-                <p class="used-size">Unlimited</p>
-            </div>
-        </section>
-
-        <div class="toolbar">
-            <div class="search-box">
-                <input type="text" id="search-input" placeholder="Tìm kiếm file nhanh...">
-            </div>
-            <div class="action-box" style="display: flex; gap: 8px;">
-                <input type="file" id="input-file" class="input-file" hidden>
-                <button class="btn btn-success upload-btn" onclick="document.getElementById('input-file').click()">
-                    Tải Lên File
+            <div class="upload-action-wrapper">
+                <button class="btn-upload-trigger" id="btn-upload-trigger">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Tải lên mới</span>
                 </button>
-                <button class="btn btn-danger" id="bulk-delete-btn" style="display: none;">
-                    Xóa mục đã chọn (<span id="select-count">0</span>)
+                <input type="file" id="file-input" multiple style="display: none;">
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-tab="my-drive">
+                    <i class="fa-solid fa-hard-drive"></i>
+                    <span>Bộ nhớ của tôi</span>
                 </button>
-                <button class="btn btn-danger" id="clear-all-storage-btn" style="background: #be123c;">
-                    Xóa Sạch Kho
+                <button class="nav-item" data-tab="recent">
+                    <i class="fa-solid fa-clock"></i>
+                    <span>Gần đây</span>
                 </button>
-            </div>
-        </div>
+                <button class="nav-item" data-tab="trash">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>Thùng rác</span>
+                </button>
+                <button class="nav-item" data-tab="logs">
+                    <i class="fa-solid fa-terminal"></i>
+                    <span>Nhật ký hệ thống</span>
+                </button>
+            </nav>
 
-        <section class="upload-manager" id="upload-manager-panel" style="display: none;">
-            <div class="manager-card">
-                <div class="manager-info">
-                    <span class="uploading-file-name">Đang xử lý file...</span>
-                    <span class="upload-status">0%</span>
+            <div class="storage-card">
+                <div class="storage-info-text">
+                    <i class="fa-solid fa-cloud"></i>
+                    <span>Trạng thái bộ nhớ</span>
                 </div>
-
-                <div class="progress">
-                    <div class="progress-bar manager-upload-progress-bar"></div>
+                <div class="storage-progress-bar">
+                    <div class="storage-progress-fill" style="width: 42%;"></div>
                 </div>
-
-                <!-- thanh phụ + text % cho updateUploadUI() -->
-                <div class="progress" style="margin-top: 6px;">
-                    <div class="progress-bar upload-progress-bar"></div>
-                </div>
-                <p class="upload-progress-text">0%</p>
-                <p class="current-part">Đã xong 0/0 part</p>
-
-                <div class="control-actions" id="upload-controls" style="margin-top: 10px; display: none; gap: 8px;">
-                    <button class="btn btn-secondary" id="btn-pause">Tạm dừng</button>
-                    <button class="btn btn-success" id="btn-resume" style="display: none;">Tiếp tục</button>
+                <div class="storage-details">
+                    <span id="storage-used-text">Đang dùng: --</span>
+                    <span>Vô hạn (Telegram)</span>
                 </div>
             </div>
-        </section>
+        </aside>
 
-        <section class="download-manager" id="download-manager-panel" style="display: none;">
-            <div class="manager-card">
-                <div class="manager-info">
-                    <span class="downloading-file-name">Đang kết nối luồng...</span>
-                    <span class="download-status">0%</span>
+        <main class="main-workspace">
+            
+            <header class="top-header">
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="search" id="search-input" placeholder="Tìm kiếm nhanh tệp tin, tài liệu, media...">
                 </div>
-                <div class="progress">
-                    <div class="progress-bar download-progress-bar"></div>
+                
+                <div class="header-right-actions">
+                    <div class="system-status">
+                        <span class="status-indicator-dot"></span>
+                        <span class="status-badge">Hệ thống trực tuyến</span>
+                    </div>
+                    <div class="user-profile">
+                        <div class="avatar">
+                            <i class="fa-solid fa-user-gear"></i>
+                        </div>
+                        <span class="username">Admin</span>
+                    </div>
+                    <button class="btn btn-danger-icon logout-btn" title="Đăng xuất khỏi hệ thống">
+                        <i class="fa-solid fa-power-off"></i>
+                    </button>
+                </div>
+            </header>
+
+            <section class="stats-banner">
+                <div class="mini-stat-card">
+                    <div class="card-icon blue"><i class="fa-solid fa-file-shield"></i></div>
+                    <div class="card-info">
+                        <span class="stat-label">Tổng số tệp</span>
+                        <span class="stat-value total-files">0</span>
+                    </div>
+                </div>
+                <div class="mini-stat-card">
+                    <div class="card-icon green"><i class="fa-solid fa-weight-hanging"></i></div>
+                    <div class="card-info">
+                        <span class="stat-label">Tổng dung lượng</span>
+                        <span class="stat-value total-size">0 B</span>
+                    </div>
+                </div>
+                <div class="mini-stat-card">
+                    <div class="card-icon violet"><i class="fa-solid fa-bolt"></i></div>
+                    <div class="card-info">
+                        <span class="stat-label">Luồng song song</span>
+                        <span class="stat-value">3 Concurrency</span>
+                    </div>
+                </div>
+            </section>
+
+            <div class="action-toolbar">
+                <div class="toolbar-left">
+                    <h2 class="view-title" id="current-view-title">Bộ nhớ của tôi</h2>
+                    <div class="bulk-actions-group" id="bulk-actions-group" style="display: none;">
+                        <span class="selected-count">Đã chọn 0 mục</span>
+                        <button class="btn btn-sm btn-danger" id="btn-bulk-delete">
+                            <i class="fa-solid fa-trash"></i> Xóa các mục đã chọn
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="toolbar-right">
+                    <div class="sort-select-wrapper">
+                        <select id="sort-select" class="select-custom">
+                            <option value="date-desc">Mới nhất trước</option>
+                            <option value="date-asc">Cũ nhất trước</option>
+                            <option value="name-asc">Tên từ A-Z</option>
+                            <option value="name-desc">Tên từ Z-A</option>
+                            <option value="size-desc">Kích thước lớn nhất</option>
+                            <option value="size-asc">Kích thước nhỏ nhất</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-sm btn-secondary" id="btn-empty-trash" style="display: none;">
+                        <i class="fa-solid fa-dumpster-fire"></i> Dọn sạch thùng rác
+                    </button>
+                    <button class="btn btn-sm btn-secondary" id="btn-clear-all" style="display: inline-flex;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Xóa toàn bộ KV
+                    </button>
+
+                    <div class="view-toggle-buttons">
+                        <button class="btn-toggle active" id="view-list-toggle" title="Xem dạng danh sách">
+                            <i class="fa-solid fa-list"></i>
+                        </button>
+                        <button class="btn-toggle" id="view-grid-toggle" title="Xem dạng lưới ô vuông">
+                            <i class="fa-solid fa-grid-2"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
-        </section>
 
-        <section class="file-list">
-            <h2 class="section-title">Danh Mục Dữ Liệu</h2>
-            <div class="table-wrapper">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th width="40"><input type="checkbox" id="select-all"></th>
-                            <th onclick="sortTable(1)" style="cursor:pointer">Tên File ⇅</th>
-                            <th onclick="sortTable(2)" style="cursor:pointer" width="130">Dung Lượng ⇅</th>
-                            <th onclick="sortTable(3)" style="cursor:pointer" width="160">Ngày Tải Lên ⇅</th>
-                            <th width="120" style="text-align: right;">Hành Động</th>
-                        </tr>
-                    </thead>
-                    <tbody class="file-table-body"></tbody>
-                </table>
-            </div>
-        </section>
+            <div class="data-view-scroller">
+                
+                <div id="file-list-view" class="file-list-view-container">
+                    <table class="modern-table">
+                        <thead>
+                            <tr>
+                                <th width="40" style="text-align: center;">
+                                    <input type="checkbox" id="th-check-all" class="custom-checkbox">
+                                </th>
+                                <th width="60" style="text-align: center;">STT</th>
+                                <th>Tên tệp tin</th>
+                                <th width="140">Kích thước</th>
+                                <th width="180">Ngày tạo</th>
+                                <th width="60" style="text-align: center;">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="main-files-table-body">
+                            </tbody>
+                    </table>
+                </div>
 
-        <!-- Chi tiết file + danh sách part (đề phòng app.js còn dùng) -->
-        <section class="details" id="details-panel" style="display: none;">
-            <h2 class="section-title">Chi Tiết File</h2>
-            <div class="details-card">
-                <p class="detail-id">ID: -</p>
-                <p class="detail-name">Tên: -</p>
-                <p class="detail-size">Dung lượng: -</p>
-                <p class="detail-parts">Part Count: -</p>
-                <p class="detail-status">Trạng thái: -</p>
-            </div>
-            <div class="table-wrapper">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Part</th>
-                            <th>Tên</th>
-                            <th>File ID</th>
-                            <th>Message ID</th>
-                        </tr>
-                    </thead>
-                    <tbody class="part-table-body"></tbody>
-                </table>
-            </div>
-        </section>
+                <div id="file-grid-view" class="file-grid-view-container" style="display: none;">
+                    </div>
 
-        <section class="activity-log">
-            <h2 class="section-title">Nhật ký phiên hoạt động</h2>
-            <ul class="log-list"></ul>
-        </section>
+                <div class="empty-state-view" id="empty-state-view" style="display: none;">
+                    <div class="empty-icon-box">
+                        <i class="fa-solid fa-folder-open"></i>
+                    </div>
+                    <h3>Thư mục này trống rỗng</h3>
+                    <p>Hãy kéo thả tệp vào đây hoặc bấm nút "Tải lên mới" để bắt đầu lưu trữ.</p>
+                </div>
+            </div>
+
+            <section id="internal-logs-section" class="internal-logs-panel" style="display: none;">
+                <div class="panel-header">
+                    <h3><i class="fa-solid fa-terminal"></i> Console Log thời gian thực</h3>
+                    <button class="btn btn-sm btn-secondary" onclick="document.querySelector('.log-list').innerHTML=''"><i class="fa-solid fa-broom"></i> Xóa log</button>
+                </div>
+                <div class="log-terminal-box">
+                    <ul class="log-list"></ul>
+                </div>
+            </section>
+
+            <section id="file-details-section" class="file-details-drawer" style="display: none;">
+                <div class="drawer-header">
+                    <h3><i class="fa-solid fa-circle-info"></i> Cấu trúc phân mảnh tệp dữ liệu</h3>
+                    <button class="close-drawer-btn" id="close-details-btn">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <div class="meta-profile">
+                        <div class="meta-file-icon" id="detail-icon-box"><i class="fa-solid fa-file"></i></div>
+                        <h4 id="detail-title-text" class="detail-name">Tên_file.zip</h4>
+                    </div>
+                    <div class="meta-grid-info">
+                        <p><strong>Mã định danh UUID:</strong> <span class="detail-id">-</span></p>
+                        <p><strong>Tổng kích thước:</strong> <span class="detail-size">-</span></p>
+                        <p><strong>Số lượng Part cắt mảnh:</strong> <span class="detail-parts">-</span></p>
+                        <p><strong>Trạng thái Endpoint:</strong> <span class="detail-status">-</span></p>
+                    </div>
+                    <div class="table-wrapper-mini">
+                        <table class="mini-table">
+                            <thead>
+                                <tr>
+                                    <th width="70">Part STT</th>
+                                    <th>Kích thước Part</th>
+                                    <th>Telegram File ID</th>
+                                </tr>
+                            </thead>
+                            <tbody class="part-table-body">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
     </section>
 
-    <div class="modal" id="preview-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title" id="preview-title">Xem trước file</h3>
-                <button class="close-btn" onclick="closePreview()">&times;</button>
+    <div class="mini-progress-panel" id="download-manager-panel" style="display: none;">
+        <div class="progress-panel-header">
+            <span class="panel-title-text" id="progress-panel-title"><i class="fa-solid fa-cloud-arrow-up"></i> Đang xử lý truyền tải...</span>
+            <div class="panel-header-actions">
+                <button class="panel-action-btn" id="btn-toggle-panel-minimize" title="Thu nhỏ / Mở rộng"><i class="fa-solid fa-chevron-down"></i></button>
             </div>
-            <div class="modal-body" id="preview-body"></div>
+        </div>
+        <div class="progress-panel-body" id="progress-panel-body">
+            <div class="active-process-item">
+                <div class="process-file-info">
+                    <span class="process-filename" id="progress-file-name">Ten_file_dang_chay.mp4</span>
+                    <span class="process-speed-text" id="progress-speed">0 KB/s</span>
+                </div>
+                <div class="process-status-row">
+                    <span class="process-status-msg" id="download-status">Đang chuẩn bị luồng...</span>
+                    <span class="process-parts-counter" id="progress-parts-count">Part: 0/0</span>
+                </div>
+                <div class="liquid-progress-container">
+                    <div class="liquid-progress-bar" id="download-progress-bar" style="width: 0%;"></div>
+                </div>
+                <div class="process-controls-row">
+                    <button class="btn-ctrl-action" id="btn-process-pause" title="Tạm dừng tiến trình"><i class="fa-solid fa-pause"></i> Tạm dừng</button>
+                    <button class="btn-ctrl-action" id="btn-process-resume" style="display: none;" title="Tiếp tục tiến trình"><i class="fa-solid fa-play"></i> Tiếp tục</button>
+                    <button class="btn-ctrl-action danger" id="btn-process-cancel" title="Hủy bỏ ngay"><i class="fa-solid fa-xmark"></i> Hủy bỏ</button>
+                </div>
+            </div>
         </div>
     </div>
+
+    <div class="modal" id="preview-modal">
+        <div class="modal-content-wrapper">
+            <div class="modal-header-bar">
+                <h3 class="modal-title-text" id="preview-title">Xem trước tài liệu</h3>
+                <button class="close-modal-btn" onclick="closePreview()">&times;</button>
+            </div>
+            <div class="modal-body-content" id="preview-body">
+                </div>
+        </div>
+    </div>
+
+    <div class="custom-dropdown-menu" id="custom-context-menu" style="display: none;">
+        <button class="dropdown-menu-item" id="ctx-preview">
+            <i class="fa-solid fa-eye"></i> <span>Xem dữ liệu</span>
+        </button>
+        <button class="dropdown-menu-item" id="ctx-details">
+            <i class="fa-solid fa-circle-nodes"></i> <span>Xem cấu trúc mảnh</span>
+        </button>
+        <button class="dropdown-menu-item" id="ctx-download">
+            <i class="fa-solid fa-circle-arrow-down"></i> <span>Tải xuống máy</span>
+        </button>
+        <button class="dropdown-menu-item" id="ctx-copy">
+            <i class="fa-solid fa-share-nodes"></i> <span>Sao chép liên kết nhanh</span>
+        </button>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-menu-item danger" id="ctx-delete">
+            <i class="fa-solid fa-trash-can"></i> <span>Xóa tệp tin</span>
+        </button>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/web-streams-polyfill@2.0.2/dist/ponyfill.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.3/StreamSaver.min.js"></script>
