@@ -1,5 +1,5 @@
 /**
- * TG-Drive Frontend Logic - PRO V4 (Khớp cấu trúc Glassmorphism & Liquid Design)
+ * TG-Drive Frontend Logic - PRO V4 (Khờp cấu trúc Glassmorphism & Liquid Design)
  * -----------------------------------------------------------------
  * - Đăng nhập bằng mật khẩu tĩnh (lưu LocalStorage)
  * - Upload: cắt file 45MB, đẩy tuần tự (UPLOAD_CONCURRENCY luồng), IndexedDB resume.
@@ -589,7 +589,11 @@ if (currentPartText)
 async function loadFiles() {
     try {
         const response = await fetch(API + "/files", { headers: { "Authorization": AUTH_HEADER } });
-        const files = await response.json();
+        console.log("status", response.status);
+
+const files = await response.json();
+
+console.log("files", files);
         if (!Array.isArray(files)) { console.error(files); return; }
         allFiles = files;
         renderFiles();
