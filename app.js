@@ -115,7 +115,7 @@ const dashboard = document.querySelector("#dashboard") || document.querySelector
 const loginForm = document.querySelector(".login-form") || document.querySelector(".login-card");
 const passwordInput = document.querySelector(".password-input") || document.querySelector(".input[type='password']");
 const uploadBtn = document.querySelector(".upload-btn") || document.querySelector(".btn-upload-trigger");
-const uploadInput = document.querySelector("#input-file");
+const uploadInput = document.querySelector("#file-input") || document.querySelector("#input-file");
 const partSizeSelect = document.querySelector("#part-size") || document.querySelector(".select-custom");
 const logoutBtn = document.querySelector(".logout-btn") || document.querySelector(".nav-item[data-action='logout']");
 const totalFiles = document.querySelector(".total-files") || document.querySelector(".stat-value[data-stat='total']");
@@ -357,6 +357,13 @@ if (uploadInput) {
             return;
         }
         startUpload();
+    });
+}
+// ĐOẠN VIẾT TIẾP CHO: Kích hoạt hộp thoại chọn file khi bấm nút "Tải lên mới"
+if (uploadBtn && uploadInput) {
+    uploadBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        uploadInput.click();
     });
 }
 
