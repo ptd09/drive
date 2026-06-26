@@ -1111,77 +1111,52 @@ function formatDate(timestamp) {
     return new Date(timestamp).toLocaleString();
 }
 
-// =========================================================
-// VÁ LỖI KHẨN CẤP: SIDEBAR TABS & NÚT TẢI LÊN MỚI
-// Dán mã này vào dưới cùng của file app.js
-// =========================================================
-document.addEventListener("click", function(e) {
-    
-    // 1. XỬ LÝ NÚT "TẢI LÊN MỚI" (Đảm bảo click icon hay chữ đều ăn lệnh)
-    const uploadBtnClick = e.target.closest("#btn-upload-trigger");
-    if (uploadBtnClick) {
-        e.preventDefault();
-        const hiddenFileInput = document.getElementById("file-input");
-        if (hiddenFileInput) {
-            // Xóa khóa an toàn để cho phép tải lên nhiều lần liên tục
-            uploadState.file = null; 
-            hiddenFileInput.value = ""; 
-            hiddenFileInput.click();
-        }
-    }
-
-    // 2. XỬ LÝ CHUYỂN TAB SIDEBAR (Bộ nhớ, Gần đây, Thùng rác, Nhật ký)
-    const navItemClick = e.target.closest(".nav-item");
-    if (navItemClick) {
-        // Xóa class 'active' của tất cả menu và làm sáng menu vừa chọn
-        document.querySelectorAll(".nav-item").forEach(nav => nav.classList.remove("active"));
-        navItemClick.classList.add("active");
-
-        const tab = navItemClick.getAttribute("data-tab");
+/**
+ * RE-INITIALIZATION & EVENT DELEGATION
+ * Giải quyết lỗi liệt nút: Tải lên, Sidebar, Context Menu
+ */
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. Xử lý tất cả các nút bấm thông qua Event Delegation
+    document.body.addEventListener("click", (e) => {
         
-        // Tham chiếu đến các vùng không gian làm việc
-        const mainView = document.querySelector(".data-view-scroller");
-        const statsBanner = document.querySelector(".stats-banner");
-        const actionToolbar = document.querySelector(".action-toolbar");
-        const logsSection = document.getElementById("internal-logs-section");
-        const viewTitle = document.getElementById("current-view-title");
-
-        // Khôi phục hiển thị mặc định của Dashboard
-        if (mainView) mainView.style.display = "block";
-        if (statsBanner) statsBanner.style.display = "grid";
-        if (actionToolbar) actionToolbar.style.display = "flex";
-        if (logsSection) logsSection.style.display = "none";
-
-        // Logic điều hướng UI cho từng Tab riêng biệt
-        if (tab === "my-drive") {
-            if (viewTitle) viewTitle.textContent = "Bộ nhớ của tôi";
-            sortKey = null; // Tắt bộ lọc, hiện bình thường
-            renderFiles(); 
-        } 
-        else if (tab === "recent") {
-            if (viewTitle) viewTitle.textContent = "Gần đây";
-            sortKey = "created_at";
-            sortDir = -1; // Ép sắp xếp ngày tạo mới nhất lên đầu
-            renderFiles();
-        } 
-        else if (tab === "trash") {
-            if (viewTitle) viewTitle.textContent = "Thùng rác";
-            // Do Worker hiện tại chưa có API phân loại Thùng Rác riêng, tạm hiển thị UI trống
-            if (mainView) {
-                mainView.innerHTML = `
-                    <div class="empty-state-view">
-                        <div class="empty-icon-box"><i class="fa-solid fa-trash-can"></i></div>
-                        <h3>Thùng rác đang trống</h3>
-                        <p>Không có tệp tin nào đang trong trạng thái chờ xóa vĩnh viễn.</p>
-                    </div>`;
-            }
-        } 
-        else if (tab === "logs") {
-            // Ẩn bảng hiển thị File, bật bảng Console Log
-            if (mainView) mainView.style.display = "none";
-            if (statsBanner) statsBanner.style.display = "none";
-            if (actionToolbar) actionToolbar.style.display = "none";
-            if (logsSection) logsSection.style.display = "block";
+        // --- Nút Tải lên mới ---
+        if (e.target.closest("#btn-upload-trigger")) {
+            const fileInput = document.getElementById("file-input");
+            if (fileInput) fileInput.click();
         }
-    }
+
+        // --- Sidebar Navigation ---
+        const navItem = e.target.closest(".nav-item");
+        if (navItem) {
+            document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+            navItem.classList.add("active");
+            
+            const tab = navItem.dataset.tab;
+            console.log("Đang chuyển sang tab:", tab);
+            // Gọi hàm render tương ứng nếu có, ví dụ: switchTab(tab);
+        }
+
+        // --- Menu Context (Kebab Menu) ---
+        const kebab = e.target.closest(".kebab-btn");
+        if (kebab) {
+            const menu = document.getElementById("custom-context-menu");
+            menu.style.display = (menu.style.display === "block") ? "none" : "block";
+            menu.style.left = e.clientX + "px";
+            menu.style.top = e.clientY + "px";
+        } else {
+            document.getElementById("custom-context-menu").style.display = "none";
+        }
+    });
 });
+
+// Xử lý sự kiện chọn file từ input ẩn
+const fileInput = document.getElementById("file-input");
+if (fileInput) {
+    fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+            console.log("Đã chọn file:", e.target.files[0].name);
+            // Gọi hàm xử lý upload ở đây
+            startUpload(e.target.files[0]); 
+        }
+    });
+}
