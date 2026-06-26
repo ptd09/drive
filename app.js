@@ -110,58 +110,60 @@ const PREVIEW_PDF_EXT = ["pdf"];
 // =========================================================
 // DOM REFERENCES (HỖ TRỢ CẢ LỚP CŨ VÀ CẤU TRÚC GLASS NEW)
 // =========================================================
-const loginPage = document.querySelector("#login-page") || document.querySelector(".login-page");
-const dashboard = document.querySelector("#dashboard") || document.querySelector(".dashboard-layout");
-const loginForm = document.querySelector(".login-form") || document.querySelector(".login-card");
-const passwordInput = document.querySelector(".password-input") || document.querySelector(".input[type='password']");
-const uploadBtn = document.querySelector(".upload-btn") || document.querySelector(".btn-upload-trigger");
-const uploadInput = document.querySelector("#file-input") || document.querySelector("#input-file");
-const partSizeSelect = document.querySelector("#part-size") || document.querySelector(".select-custom");
-const logoutBtn = document.querySelector(".logout-btn") || document.querySelector(".nav-item[data-action='logout']");
-const totalFiles = document.querySelector(".total-files") || document.querySelector(".stat-value[data-stat='total']");
-const totalSize = document.querySelector(".total-size") || document.querySelector(".stat-value[data-stat='size']");
-const usedSize = document.querySelector(".used-size") || document.querySelector(".storage-info-text span");
+const loginPage = document.getElementById("login-page");
+const dashboard = document.getElementById("dashboard");
+const loginForm = document.querySelector(".login-form");
+const passwordInput = document.querySelector(".password-input");
+const uploadBtn = document.getElementById("btn-upload-trigger");
+const uploadInput = document.getElementById("file-input");
+const partSizeSelect = null; // removed from UI - hardcoded 45MB
+const logoutBtn = document.querySelector(".logout-btn");
+const totalFiles = document.querySelector(".total-files");
+const totalSize = document.querySelector(".total-size");
+const usedSize = document.getElementById("storage-used-text");
 
-// Các thành phần góc nhìn & vùng chứa tệp tin nâng cấp
+// View toggles
 const dataViewScroller = document.querySelector(".data-view-scroller");
-const btnToggleList = document.querySelector(".btn-toggle[data-view='list']");
-const btnToggleGrid = document.querySelector(".btn-toggle[data-view='grid']");
+const btnToggleList = document.getElementById("view-list-toggle");
+const btnToggleGrid = document.getElementById("view-grid-toggle");
 const storageProgressFill = document.querySelector(".storage-progress-fill");
 
-// Panels Tiến trình
-const uploadManagerPanel = document.querySelector("#upload-manager-panel") || document.querySelector(".mini-progress-panel");
-const uploadingFileName = document.querySelector(".uploading-file-name") || document.querySelector(".process-filename");
-const uploadProgressBar = document.getElementById("download-progress-bar");
-const uploadProgressText = document.getElementById("progress-speed");
-const managerUploadBar = document.querySelector(".manager-upload-progress-bar") || document.querySelector(".liquid-progress-bar");
-const uploadStatus = document.querySelector(".upload-status") || document.querySelector(".process-status-row span:last-child");
-const currentPartText = document.getElementById("progress-parts-count");
-const uploadControls = document.querySelector("#upload-controls") || document.querySelector(".process-controls-row");
-const btnPause = document.querySelector("#btn-pause") || document.querySelector(".btn-ctrl-action:not(.danger)");
-const btnResume = document.querySelector("#btn-resume");
+// Panels Tiến trình — dùng đúng id theo index.html hiện tại
+// Upload và Download đều dùng chung #download-manager-panel (mini-progress-panel)
+const uploadManagerPanel   = document.getElementById("download-manager-panel");
+const uploadingFileName    = document.getElementById("progress-file-name");
+const uploadProgressBar    = document.getElementById("download-progress-bar");  // liquid bar, dùng chung
+const uploadProgressText   = document.getElementById("progress-speed");
+const managerUploadBar     = document.getElementById("download-progress-bar");
+const uploadStatus         = document.getElementById("download-status");
+const currentPartText      = document.getElementById("progress-parts-count");
+const uploadControls       = document.querySelector(".process-controls-row");
+const btnPause             = document.getElementById("btn-process-pause");
+const btnResume            = document.getElementById("btn-process-resume");
 
-const downloadManagerPanel = document.querySelector("#download-manager-panel");
-const downloadingFileName = document.querySelector(".downloading-file-name");
-const downloadProgressBar = document.querySelector(".download-progress-bar");
-const downloadStatus = document.querySelector(".download-status");
+const downloadManagerPanel = document.getElementById("download-manager-panel");
+const downloadingFileName  = document.getElementById("progress-file-name");
+const downloadProgressBar  = document.getElementById("download-progress-bar");
+const downloadStatus       = document.getElementById("download-status");
 
-const detailsPanel = document.querySelector("#details-panel") || document.querySelector(".file-details-drawer");
-const detailId = document.querySelector(".detail-id");
-const detailName = document.querySelector(".detail-name");
-const detailSize = document.querySelector(".detail-size");
-const detailParts = document.querySelector(".detail-parts");
+// Details drawer
+const detailsPanel = document.getElementById("file-details-section");
+const detailId     = document.querySelector(".detail-id");
+const detailName   = document.querySelector(".detail-name");
+const detailSize   = document.querySelector(".detail-size");
+const detailParts  = document.querySelector(".detail-parts");
 const detailStatus = document.querySelector(".detail-status");
 const partTableBody = document.querySelector(".part-table-body");
 
-const logList = document.querySelector(".log-list") || document.querySelector(".log-terminal-box");
-const searchInput = document.querySelector("#search-input");
-const bulkDeleteBtn = document.querySelector("#bulk-delete-btn");
-const selectCountSpan = document.querySelector("#select-count") || document.querySelector(".selected-count");
-const clearAllBtn = document.querySelector("#clear-all-storage-btn");
+const logList        = document.querySelector(".log-list");
+const searchInput    = document.getElementById("search-input");
+const bulkDeleteBtn  = document.getElementById("btn-bulk-delete");
+const selectCountSpan = document.querySelector(".selected-count");
+const clearAllBtn    = document.getElementById("btn-clear-all");
 
-const previewModal = document.querySelector("#preview-modal") || document.querySelector(".modal");
-const previewTitle = document.querySelector("#preview-title");
-const previewBody = document.querySelector("#preview-body") || document.querySelector(".modal-body-content");
+const previewModal = document.getElementById("preview-modal");
+const previewTitle = document.getElementById("preview-title");
+const previewBody  = document.getElementById("preview-body");
 
 // =========================================================
 // STATE MANAGEMENT (BỔ SUNG CHẾ ĐỘ VIEW)
@@ -235,6 +237,10 @@ function setupViewToggles() {
             localStorage.setItem("tgdrive_view_pref", "list");
             btnToggleList.classList.add("active");
             btnToggleGrid.classList.remove("active");
+            const listView = document.getElementById("file-list-view");
+            const gridView = document.getElementById("file-grid-view");
+            if (listView) listView.style.display = "";
+            if (gridView) gridView.style.display = "none";
             renderFiles();
         });
 
@@ -243,6 +249,10 @@ function setupViewToggles() {
             localStorage.setItem("tgdrive_view_pref", "grid");
             btnToggleGrid.classList.add("active");
             btnToggleList.classList.remove("active");
+            const listView = document.getElementById("file-list-view");
+            const gridView = document.getElementById("file-grid-view");
+            if (listView) listView.style.display = "none";
+            if (gridView) gridView.style.display = "";
             renderFiles();
         });
     }
@@ -671,59 +681,47 @@ function getFilteredSortedFiles() {
 
 function renderFiles() {
     const files = getFilteredSortedFiles();
-    if (!dataViewScroller) return;
 
     let totalBytes = 0;
     allFiles.forEach(f => totalBytes += Number(f.size || 0));
 
-    // Cập nhật thông số Banner
     if (totalFiles) totalFiles.textContent = allFiles.length;
     if (totalSize) totalSize.textContent = formatSize(totalBytes);
-    if (usedSize) usedSize.textContent = `Đã sử dụng ${formatSize(totalBytes)}`;
-    
-    // Tạo chuyển động co giãn mượt mà cho thanh lưu trữ (Giới hạn tượng trưng 100GB)
+    if (usedSize) usedSize.textContent = `Đang dùng: ${formatSize(totalBytes)}`;
+
     const storagePercent = Math.min(100, Math.max(2, (totalBytes / (100 * 1024 * 1024 * 1024)) * 100));
     if (storageProgressFill) storageProgressFill.style.width = storagePercent + "%";
 
-    // Xử lý Giao diện Trống (Empty State)
+    const emptyState = document.getElementById("empty-state-view");
+    const listView   = document.getElementById("file-list-view");
+    const gridView   = document.getElementById("file-grid-view");
+    const tableBody  = document.getElementById("main-files-table-body");
+
     if (files.length === 0) {
-        dataViewScroller.innerHTML = `
-            <div class="empty-state-view">
-                <div class="empty-icon-box">🛸</div>
-                <h3>Không tìm thấy dữ liệu tệp tin</h3>
-                <p>Kho lưu trữ trống hoặc từ khóa tìm kiếm không khớp.</p>
-            </div>
-        `;
+        if (emptyState) emptyState.style.display = "flex";
+        if (listView)   listView.style.display   = "none";
+        if (gridView)   gridView.style.display   = "none";
         updateSelectCount();
         return;
     }
 
-    // 1. GIAO DIỆN HIỂN THỊ DANH SÁCH (LIST VIEW)
-    if (currentView === "list") {
-        dataViewScroller.innerHTML = `
-            <table class="modern-table">
-                <thead>
-                    <tr>
-                        <th width="40"><input type="checkbox" id="select-all" class="custom-checkbox"></th>
-                        <th onclick="sortTable(1)" style="cursor:pointer;">Tên tệp tin <span style="font-size:11px;">↕</span></th>
-                        <th onclick="sortTable(2)" style="cursor:pointer;">Dung lượng <span style="font-size:11px;">↕</span></th>
-                        <th onclick="sortTable(3)" style="cursor:pointer;">Ngày tạo <span style="font-size:11px;">↕</span></th>
-                        <th style="text-align:right;">Hành động</th>
-                    </tr>
-                </thead>
-                <tbody class="file-table-body"></tbody>
-            </table>
-        `;
+    if (emptyState) emptyState.style.display = "none";
 
-        const fileTableBody = dataViewScroller.querySelector(".file-table-body");
-        
-        files.forEach(file => {
+    if (currentView === "list") {
+        if (listView) listView.style.display   = "";
+        if (gridView) gridView.style.display   = "none";
+
+        if (!tableBody) return;
+        tableBody.innerHTML = "";
+
+        files.forEach((file, idx) => {
             const tr = document.createElement("tr");
             tr.dataset.id = file.id;
             const iconInfo = getVisualIconInfo(file.name);
 
             tr.innerHTML = `
-            <td><input type="checkbox" class="row-check custom-checkbox" data-id="${file.id}"></td>
+            <td style="text-align:center;"><input type="checkbox" class="row-check custom-checkbox" data-id="${file.id}"></td>
+            <td style="text-align:center;" class="stt-cell">${idx + 1}</td>
             <td>
                 <div class="file-name-cell" title="${escapeHtml(file.name || "")}">
                     <div class="file-icon-box ${iconInfo.class}">${iconInfo.icon}</div>
@@ -732,7 +730,7 @@ function renderFiles() {
             </td>
             <td>${formatSize(file.size || 0)}</td>
             <td>${formatDate(file.created_at)}</td>
-            <td class="action-cell" style="text-align:right;">
+            <td class="action-cell" style="text-align:center;">
                 <button class="kebab-btn action-dots" data-id="${file.id}">&#8942;</button>
                 <div class="action-menu" data-menu-for="${file.id}">
                     ${canPreviewFile(file) ? `<button data-action="preview" data-id="${file.id}">👁 Xem trước</button>` : ""}
@@ -742,58 +740,61 @@ function renderFiles() {
                 </div>
             </td>
             `;
-            fileTableBody.appendChild(tr);
+            tableBody.appendChild(tr);
         });
 
-        // Tái ràng buộc sự kiện Chọn tất cả
-        const selectAllCb = dataViewScroller.querySelector("#select-all");
+        // select-all nằm trong thead tĩnh
+        const selectAllCb = document.getElementById("th-check-all");
         if (selectAllCb) {
-            selectAllCb.addEventListener("change", () => {
-                dataViewScroller.querySelectorAll(".row-check").forEach(cb => cb.checked = selectAllCb.checked);
+            // clone để xóa listener cũ, tránh gắn nhiều lần
+            const fresh = selectAllCb.cloneNode(true);
+            selectAllCb.replaceWith(fresh);
+            fresh.addEventListener("change", () => {
+                tableBody.querySelectorAll(".row-check").forEach(cb => cb.checked = fresh.checked);
                 updateSelectCount();
             });
         }
 
-    // 2. GIAO DIỆN HIỂN THỊ LƯỚI KHỐI CAO CẤP (GRID VIEW LIKE DROPBOX)
     } else {
-        dataViewScroller.innerHTML = `<div class="file-grid-view-container"></div>`;
-        const gridContainer = dataViewScroller.querySelector(".file-grid-view-container");
+        // GRID VIEW
+        if (listView) listView.style.display = "none";
+        if (gridView) {
+            gridView.style.display = "";
+            gridView.innerHTML = "";
 
-        files.forEach(file => {
-            const iconInfo = getVisualIconInfo(file.name);
-            const card = document.createElement("div");
-            card.className = "grid-card glass-panel";
-            card.dataset.id = file.id;
+            files.forEach(file => {
+                const iconInfo = getVisualIconInfo(file.name);
+                const card = document.createElement("div");
+                card.className = "grid-card glass-panel";
+                card.dataset.id = file.id;
 
-            card.innerHTML = `
-                <div class="grid-card-header">
-                    <input type="checkbox" class="row-check custom-checkbox" data-id="${file.id}">
-                    <div class="action-cell">
-                        <button class="kebab-btn action-dots" data-id="${file.id}">&#8942;</button>
-                        <div class="action-menu" data-menu-for="${file.id}">
-                            ${canPreviewFile(file) ? `<button data-action="preview" data-id="${file.id}">👁 Xem trực quan</button>` : ""}
-                            <button data-action="details" data-id="${file.id}">ℹ Cấu trúc</button>
-                            <button data-action="download" data-id="${file.id}">⬇ Tải về</button>
-                            <button class="danger" data-action="delete" data-id="${file.id}">🗑 Hủy bỏ</button>
+                card.innerHTML = `
+                    <div class="grid-card-header">
+                        <input type="checkbox" class="row-check custom-checkbox" data-id="${file.id}">
+                        <div class="action-cell">
+                            <button class="kebab-btn action-dots" data-id="${file.id}">&#8942;</button>
+                            <div class="action-menu" data-menu-for="${file.id}">
+                                ${canPreviewFile(file) ? `<button data-action="preview" data-id="${file.id}">👁 Xem trực quan</button>` : ""}
+                                <button data-action="details" data-id="${file.id}">ℹ Cấu trúc</button>
+                                <button data-action="download" data-id="${file.id}">⬇ Tải về</button>
+                                <button class="danger" data-action="delete" data-id="${file.id}">🗑 Hủy bỏ</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="grid-icon-preview ${iconInfo.class}" style="align-self:center; margin: 8px 0;">
-                    ${iconInfo.icon}
-                </div>
-                <div class="grid-card-body">
-                    <div class="file-name" title="${escapeHtml(file.name || "")}">${escapeHtml(file.name || "-")}</div>
-                    <div class="file-meta">${formatSize(file.size || 0)} • ${formatDate(file.created_at).split(" ")[0]}</div>
-                </div>
-            `;
-            gridContainer.appendChild(card);
-        });
+                    <div class="grid-icon-preview ${iconInfo.class}">${iconInfo.icon}</div>
+                    <div class="grid-card-body">
+                        <div class="file-name" title="${escapeHtml(file.name || "")}">${escapeHtml(file.name || "-")}</div>
+                        <div class="file-meta">${formatSize(file.size || 0)} • ${formatDate(file.created_at).split(" ")[0]}</div>
+                    </div>
+                `;
+                gridView.appendChild(card);
+            });
+        }
     }
 
-    // Gắn trình lắng nghe thay đổi checkbox cho cả 2 chế độ view
-    dataViewScroller.querySelectorAll(".row-check").forEach(cb => {
-        cb.addEventListener("change", updateSelectCount);
-    });
+    // Checkbox change handler
+    const allCheckboxes = document.querySelectorAll(".row-check");
+    allCheckboxes.forEach(cb => cb.addEventListener("change", updateSelectCount));
 
     updateSelectCount();
 }
@@ -834,16 +835,17 @@ document.addEventListener("click", e => {
 // QUẢN LÝ KHỐI CHỌN & XÓA BÓC TÁCH (BULK ACTIONS)
 // =========================================================
 function updateSelectCount() {
-    const checked = dataViewScroller ? dataViewScroller.querySelectorAll(".row-check:checked") : [];
-    if (selectCountSpan) selectCountSpan.textContent = checked.length;
-    if (bulkDeleteBtn) {
-        bulkDeleteBtn.style.display = checked.length > 0 ? "inline-flex" : "none";
-    }
+    const checked = document.querySelectorAll(".row-check:checked");
+    const count = checked.length;
+    if (selectCountSpan) selectCountSpan.textContent = `Đã chọn ${count} mục`;
+    const bulkGroup = document.getElementById("bulk-actions-group");
+    if (bulkGroup) bulkGroup.style.display = count > 0 ? "flex" : "none";
+    if (bulkDeleteBtn) bulkDeleteBtn.style.display = count > 0 ? "inline-flex" : "none";
 }
 
 if (bulkDeleteBtn) {
     bulkDeleteBtn.addEventListener("click", async () => {
-        const checked = Array.from(dataViewScroller.querySelectorAll(".row-check:checked"));
+        const checked = Array.from(document.querySelectorAll(".row-check:checked"));
         if (checked.length === 0) return;
         if (!confirm(`Xác nhận xóa đồng loạt nhóm gồm ${checked.length} tệp tin?`)) return;
 
@@ -880,24 +882,29 @@ async function showDetails(id) {
         const response = await fetch(API + "/file/" + id, { headers: { "Authorization": AUTH_HEADER } });
         const file = await response.json();
 
-        if (detailsPanel) detailsPanel.style.display = "block";
-        if (detailId) detailId.textContent = "ID: " + (file.id || "-");
-        if (detailName) detailName.textContent = "Tên: " + (file.name || "-");
-        if (detailSize) detailSize.textContent = "Dung lượng gốc: " + formatSize(file.size || 0);
-        if (detailParts) detailParts.textContent = "Số lượng khối mảnh: " + (file.part_count || 1);
-        if (detailStatus) detailStatus.textContent = "Trạng thái: " + (file.status || "-");
+        const panel = document.getElementById("file-details-section");
+        if (panel) panel.style.display = "block";
+
+        const titleEl = document.getElementById("detail-title-text");
+        if (titleEl) titleEl.textContent = file.name || "-";
+
+        if (detailId) detailId.textContent = file.id || "-";
+        if (detailName) detailName.textContent = file.name || "-";
+        if (detailSize) detailSize.textContent = formatSize(file.size || 0);
+        if (detailParts) detailParts.textContent = file.part_count || 1;
+        if (detailStatus) detailStatus.textContent = file.status || "-";
 
         if (partTableBody) {
             partTableBody.innerHTML = "";
             if (Array.isArray(file.parts)) {
                 file.parts.forEach(part => {
                     const row = document.createElement("tr");
-                    row.innerHTML = `<td>${part.index}</td><td>${part.name || "-"}</td><td>${part.file_id || "-"}</td><td>${part.message_id || "-"}</td>`;
+                    row.innerHTML = `<td>${part.index}</td><td>${formatSize(part.size || 0)}</td><td style="word-break:break-all;font-size:11px;">${part.file_id || "-"}</td>`;
                     partTableBody.appendChild(row);
                 });
             }
         }
-        if (detailsPanel) detailsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
         console.error(error);
         showToast("Lỗi nạp thông tin phần mảnh!", "danger");
@@ -1039,7 +1046,7 @@ async function downloadFile(id) {
     const parts = fileMeta.parts.slice().sort((a, b) => a.index - b.index);
     const totalParts = parts.length;
     const fileStream = streamSaver.createWriteStream(fileMeta.name || "download.bin", { size: fileMeta.size || undefined });
-    const writer = fileStream.WriteStream ? fileStream.WriteStream.getWriter() : fileStream.getWriter();
+    const writer = fileStream.getWriter();
 
     if (downloadManagerPanel) downloadManagerPanel.style.display = "block";
     if (downloadingFileName) downloadingFileName.textContent = fileMeta.name || id;
@@ -1112,51 +1119,82 @@ function formatDate(timestamp) {
 }
 
 /**
- * RE-INITIALIZATION & EVENT DELEGATION
- * Giải quyết lỗi liệt nút: Tải lên, Sidebar, Context Menu
+ * Event delegation chính - Sidebar nav + context menu
+ * Upload trigger được xử lý qua uploadBtn listener phía trên
  */
-document.addEventListener("DOMContentLoaded", () => {
-    // 1. Xử lý tất cả các nút bấm thông qua Event Delegation
-    document.body.addEventListener("click", (e) => {
-        
-        // --- Nút Tải lên mới ---
-        if (e.target.closest("#btn-upload-trigger")) {
-            const fileInput = document.getElementById("file-input");
-            if (fileInput) fileInput.click();
-        }
+document.addEventListener("click", e => {
+    // Sidebar Navigation
+    const navItem = e.target.closest(".nav-item");
+    if (navItem) {
+        document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+        navItem.classList.add("active");
+        const tab = navItem.dataset.tab;
+        const logSection = document.getElementById("internal-logs-section");
+        const mainView = document.querySelector(".data-view-scroller");
+        const statsBar = document.querySelector(".stats-banner");
 
-        // --- Sidebar Navigation ---
-        const navItem = e.target.closest(".nav-item");
-        if (navItem) {
-            document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
-            navItem.classList.add("active");
-            
-            const tab = navItem.dataset.tab;
-            console.log("Đang chuyển sang tab:", tab);
-            // Gọi hàm render tương ứng nếu có, ví dụ: switchTab(tab);
-        }
-
-        // --- Menu Context (Kebab Menu) ---
-        const kebab = e.target.closest(".kebab-btn");
-        if (kebab) {
-            const menu = document.getElementById("custom-context-menu");
-            menu.style.display = (menu.style.display === "block") ? "none" : "block";
-            menu.style.left = e.clientX + "px";
-            menu.style.top = e.clientY + "px";
+        if (tab === "logs") {
+            if (logSection) logSection.style.display = "block";
+            if (mainView) mainView.style.display = "none";
+            if (statsBar) statsBar.style.display = "none";
         } else {
-            document.getElementById("custom-context-menu").style.display = "none";
+            if (logSection) logSection.style.display = "none";
+            if (mainView) mainView.style.display = "";
+            if (statsBar) statsBar.style.display = "";
+            if (tab === "my-drive") loadFiles();
         }
-    });
+        return;
+    }
+
+    // Đóng context menu khi click ra ngoài
+    const ctxMenu = document.getElementById("custom-context-menu");
+    if (ctxMenu && !e.target.closest("#custom-context-menu") && !e.target.closest(".kebab-btn")) {
+        ctxMenu.style.display = "none";
+    }
 });
 
-// Xử lý sự kiện chọn file từ input ẩn
-const fileInput = document.getElementById("file-input");
-if (fileInput) {
-    fileInput.addEventListener("change", (e) => {
-        if (e.target.files.length > 0) {
-            console.log("Đã chọn file:", e.target.files[0].name);
-            // Gọi hàm xử lý upload ở đây
-            startUpload(e.target.files[0]); 
+// Close details drawer
+const closeDetailsBtn = document.getElementById("close-details-btn");
+if (closeDetailsBtn) {
+    closeDetailsBtn.addEventListener("click", () => {
+        if (detailsPanel) detailsPanel.style.display = "none";
+    });
+}
+
+// Sort select
+const sortSelect = document.getElementById("sort-select");
+if (sortSelect) {
+    sortSelect.addEventListener("change", () => {
+        const val = sortSelect.value;
+        const [k, d] = val.split("-");
+        sortKey = k === "date" ? "created_at" : k === "name" ? "name" : "size";
+        sortDir = d === "desc" ? -1 : 1;
+        renderFiles();
+    });
+}
+
+// Empty trash button
+const emptyTrashBtn = document.getElementById("btn-empty-trash");
+if (emptyTrashBtn) {
+    emptyTrashBtn.addEventListener("click", async () => {
+        if (!confirm("Dọn sạch thùng rác?")) return;
+        try {
+            await fetch(API + "/trash", { method: "DELETE", headers: { "Authorization": AUTH_HEADER } });
+            showToast("Đã dọn sạch thùng rác!", "success");
+            loadFiles();
+        } catch (e) {
+            showToast("Lỗi khi dọn thùng rác", "danger");
         }
+    });
+}
+
+// Cancel process button
+const btnProcessCancel = document.getElementById("btn-process-cancel");
+if (btnProcessCancel) {
+    btnProcessCancel.addEventListener("click", () => {
+        uploadState.cancelled = true;
+        uploadState.paused = false;
+        if (uploadManagerPanel) uploadManagerPanel.style.display = "none";
+        showToast("Đã hủy tiến trình!", "warning");
     });
 }
