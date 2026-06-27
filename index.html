@@ -13,8 +13,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
+
+    <!-- ★ Phase-4: Service Worker registration for range streaming -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(reg => console.log('[SW] Registered, scope:', reg.scope))
+                .catch(err => console.warn('[SW] Registration failed:', err));
+        }
+    </script>
+
 </head>
-<body class="app-container">
+<body class="app-container" id="app-body">
 
     <div class="background-glow">
         <div class="blob blob-1"></div>
