@@ -1350,3 +1350,88 @@ if (btnProcessCancel) {
     }
 
 })(); // end initResponsiveFeatures IIFE
+/* ====================================================================
+   ★ PHASE 3 — MOBILE DRAWER + FAB (Append, không xóa code cũ) ★
+   - Tạo FAB động (#mobile-fab-menu)
+   - Toggle .sidebar.drawer-open + .drawer-overlay.active
+   - Tự ẩn/hiện theo breakpoint 768px
+   ==================================================================== */
+(function initMobileDrawerFAB() {
+    "use strict";
+
+    const sidebarEl = document.querySelector(".sidebar");
+    let   overlayEl = document.getElementById("sidebar-overlay");
+
+    // Nếu overlay chưa có trong HTML, tạo động (an toàn 2 chiều)
+    if (!overlayEl) {
+        overlayEl = document.createElement("div");
+        overlayEl.id = "sidebar-overlay";
+        overlayEl.className = "drawer-overlay";
+        document.body.appendChild(overlayEl);
+    }
+
+    // ── Tạo FAB động ──
+    let fab = document.getElementById("mobile-fab-menu");
+    if (!fab) {
+        fab = document.createElement("button");
+        fab.id = "mobile-fab-menu";
+        fab.setAttribute("aria-label", "Mở menu điều hướng");
+        fab.innerHTML = '<i class="fa-solid fa-bars"></i>';
+        document.body.appendChild(fab);
+    }
+
+    const MOBILE_BP = 768;
+
+    function isMobile() { return window.innerWidth <= MOBILE_BP; }
+
+    function openDrawer() {
+        if (!sidebarEl) return;
+        sidebarEl.classList.add("drawer-open");
+        overlayEl.classList.add("active");
+        fab.classList.add("fab-rotate");
+        fab.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        document.body.style.overflow = "hidden";
+    }
+    function closeDrawer() {
+        if (!sidebarEl) return;
+        sidebarEl.classList.remove("drawer-open");
+        overlayEl.classList.remove("active");
+        fab.classList.remove("fab-rotate");
+        fab.innerHTML = '<i class="fa-solid fa-bars"></i>';
+        document.body.style.overflow = "";
+    }
+    function toggleDrawer() {
+        if (sidebarEl && sidebarEl.classList.contains("drawer-open")) closeDrawer();
+        else openDrawer();
+    }
+
+    fab.addEventListener("click", (e) => { e.stopPropagation(); toggleDrawer(); });
+    overlayEl.addEventListener("click", closeDrawer);
+
+    // Đóng drawer khi chọn nav-item (mobile)
+    document.addEventListener("click", (e) => {
+        if (e.target.closest(".nav-item") && isMobile()) closeDrawer();
+    });
+
+    // Đóng khi bấm nút Upload (mở hộp thoại chọn file)
+    const upBtn = document.getElementById("btn-upload-trigger");
+    if (upBtn) upBtn.addEventListener("click", () => { if (isMobile()) closeDrawer(); });
+
+    // Đóng bằng Escape
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+    // Hiện/ẩn FAB + reset drawer theo kích thước
+    function syncBreakpoint() {
+        fab.style.display = isMobile() ? "flex" : "none";
+        if (!isMobile()) closeDrawer();
+    }
+
+    // Debounce resize
+    let rt;
+    window.addEventListener("resize", () => {
+        clearTimeout(rt);
+        rt = setTimeout(syncBreakpoint, 120);
+    });
+
+    syncBreakpoint();
+})();
