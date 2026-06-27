@@ -1198,3 +1198,155 @@ if (btnProcessCancel) {
         showToast("Đã hủy tiến trình!", "warning");
     });
 }
+
+/* ====================================================================
+   ★ RESPONSIVE ADDITIONS — Appended to original app.js (nothing deleted)
+   Handles:
+   1. Hamburger / Off-canvas sidebar drawer
+   2. Sidebar overlay click-to-close
+   3. Drag-and-drop on stats-dropzone-wrapper → triggers file upload
+   4. Updates querySelectorAll usage to also catch new wrapper elements
+   ==================================================================== */
+
+(function initResponsiveFeatures() {
+    "use strict";
+
+    // ── 1. DOM references (new elements added in HTML) ──────────────
+    const hamburgerBtn   = document.getElementById("hamburger-btn");
+    const sidebarEl      = document.querySelector(".sidebar");
+    const sidebarOverlay = document.getElementById("sidebar-overlay");
+    const dropzoneWrap   = document.getElementById("stats-dropzone-wrapper");
+    const dropzoneHint   = document.getElementById("dropzone-hint");
+
+    // The existing file input reference (from original app.js)
+    const fileInputEl = document.getElementById("file-input");
+
+    // ── 2. Hamburger — open/close drawer ──────────────────────────
+    function openDrawer() {
+        if (!sidebarEl) return;
+        sidebarEl.classList.add("drawer-open");
+        if (sidebarOverlay) sidebarOverlay.classList.add("active");
+        document.body.style.overflow = "hidden"; // prevent background scroll
+    }
+    function closeDrawer() {
+        if (!sidebarEl) return;
+        sidebarEl.classList.remove("drawer-open");
+        if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+        document.body.style.overflow = "";
+    }
+
+    if (hamburgerBtn) {
+        hamburgerBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (sidebarEl && sidebarEl.classList.contains("drawer-open")) {
+                closeDrawer();
+            } else {
+                openDrawer();
+            }
+        });
+    }
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener("click", closeDrawer);
+    }
+
+    // Close drawer when a nav-item is clicked (on mobile, user chose a tab)
+    document.addEventListener("click", (e) => {
+        const navItem = e.target.closest(".nav-item");
+        if (navItem && window.innerWidth <= 900) {
+            closeDrawer();
+        }
+    });
+
+    // Close drawer on Escape key
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeDrawer();
+    });
+
+    // ── 3. Hamburger icon visibility: show on mobile, hide on desktop ──
+    function updateHamburgerVisibility() {
+        if (!hamburgerBtn) return;
+        hamburgerBtn.style.display = (window.innerWidth <= 900) ? "flex" : "none";
+        // On resize to desktop, also close any open drawer
+        if (window.innerWidth > 900) closeDrawer();
+    }
+    updateHamburgerVisibility();
+    window.addEventListener("resize", updateHamburgerVisibility);
+
+    // ── 4. Drag-and-drop onto the stats-banner / drop-zone wrapper ──
+    if (!dropzoneWrap || !fileInputEl) return;
+
+    let dragCounter = 0; // track nested dragenter/dragleave events
+
+    dropzoneWrap.addEventListener("dragenter", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter++;
+        dropzoneWrap.classList.add("drag-over");
+        if (dropzoneHint) dropzoneHint.style.display = "flex";
+    });
+
+    dropzoneWrap.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+    });
+
+    dropzoneWrap.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter--;
+        if (dragCounter <= 0) {
+            dragCounter = 0;
+            dropzoneWrap.classList.remove("drag-over");
+            if (dropzoneHint) dropzoneHint.style.display = "none";
+        }
+    });
+
+    dropzoneWrap.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter = 0;
+        dropzoneWrap.classList.remove("drag-over");
+        if (dropzoneHint) dropzoneHint.style.display = "none";
+
+        const files = e.dataTransfer.files;
+        if (!files || files.length === 0) return;
+
+        // Transfer DataTransfer files to the hidden file input
+        // (DataTransfer is read-only for .files, so we use a workaround:
+        //  dispatch a synthetic input via a new DataTransfer object)
+        try {
+            const dt = new DataTransfer();
+            for (const file of files) dt.items.add(file);
+            fileInputEl.files = dt.files;
+            // Trigger the existing "change" event listener on fileInputEl
+            fileInputEl.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch (err) {
+            // Fallback: show toast if DataTransfer assignment fails (Safari)
+            if (typeof showToast === "function") {
+                showToast("Trình duyệt của bạn không hỗ trợ kéo-thả trực tiếp. Vui lòng dùng nút Tải lên.", "warning");
+            }
+        }
+    });
+
+    // ── 5. Also allow dragging over the whole main-workspace when mobile ──
+    //       (users might drop on the file list area too)
+    const mainWorkspace = document.querySelector(".main-workspace");
+    if (mainWorkspace) {
+        mainWorkspace.addEventListener("dragover", (e) => e.preventDefault());
+        mainWorkspace.addEventListener("drop", (e) => {
+            // Only handle if NOT handled by dropzoneWrap
+            if (e.target.closest("#stats-dropzone-wrapper")) return;
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+            try {
+                const dt = new DataTransfer();
+                for (const file of files) dt.items.add(file);
+                fileInputEl.files = dt.files;
+                fileInputEl.dispatchEvent(new Event("change", { bubbles: true }));
+            } catch (_) { /* silent fail */ }
+        });
+    }
+
+})(); // end initResponsiveFeatures IIFE
