@@ -727,384 +727,448 @@ body {
     to   { opacity: 1; transform: translateX(0); }
 }
 
-/* ====================================================================
-   ★ RESPONSIVE UPGRADE — TG-DRIVE PRO v5
-   Appended below original CSS. Original rules are NOT modified.
-   ==================================================================== */
+/* =====================================================
+   ★ RESPONSIVE EXTREME OPTIMIZATION — APPEND ONLY ★
+   Thêm vào CUỐI file. Không chạm code cũ.
+   Sử dụng clamp(), GPU transform, fluid grid, touch UX.
+   ===================================================== */
 
-/* ── CSS Custom Properties (extra) ──────────────────────────────── */
+/* ── 1. CSS CUSTOM PROPS — FLUID SIZING ─────────────── */
 :root {
-    --sidebar-collapsed-w : 64px;
-    --sidebar-expanded-w  : 260px;
-    --sidebar-transition  : width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                            transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-    --header-block-h      : auto;
-    --filelist-max-w      : 1080px;
-    --dropzone-active-bg  : rgba(139, 92, 246, 0.12);
+    --fs-xs:  clamp(10px, 1.2vw, 12px);
+    --fs-sm:  clamp(12px, 1.4vw, 14px);
+    --fs-base:clamp(13px, 1.6vw, 15px);
+    --fs-lg:  clamp(16px, 2vw,   20px);
+    --fs-xl:  clamp(20px, 2.8vw, 28px);
+
+    --sp-xs:  clamp(6px,  1vw, 10px);
+    --sp-sm:  clamp(10px, 1.5vw, 16px);
+    --sp-md:  clamp(14px, 2vw,  24px);
+    --sp-lg:  clamp(20px, 3vw,  36px);
+
+    /* Sidebar width dùng clamp thay vì px cứng */
+    --sidebar-w: clamp(200px, 20vw, 280px);
+
+    /* Touch target minimum (WCAG 2.5.5) */
+    --touch-min: 44px;
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   HAMBURGER BUTTON  (hidden on desktop, shown on mobile)
-───────────────────────────────────────────────────────────────── */
-.hamburger-btn {
-    position  : fixed;
-    top       : 14px;
-    left      : 14px;
-    z-index   : 1200;
-    width     : 42px;
-    height    : 42px;
-    border    : none;
-    border-radius : 50%;
-    background: rgba(139, 92, 246, 0.85);
-    color     : #fff;
-    font-size : 17px;
-    cursor    : pointer;
-    display   : flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.5);
-    backdrop-filter: blur(10px);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.hamburger-btn:hover { transform: scale(1.08); box-shadow: 0 6px 22px rgba(139,92,246,0.7); }
-
-/* ─────────────────────────────────────────────────────────────────
-   SIDEBAR OVERLAY  (dark scrim behind open drawer on mobile)
-───────────────────────────────────────────────────────────────── */
-.sidebar-overlay {
-    display  : none;
-    position : fixed;
-    inset    : 0;
-    z-index  : 1050;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
-    animation: fadeInOverlay 0.25s ease;
-}
-.sidebar-overlay.active { display: block; }
-@keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
-
-/* ─────────────────────────────────────────────────────────────────
-   SIDEBAR — ICON-ONLY BY DEFAULT ON DESKTOP (hover to expand)
-───────────────────────────────────────────────────────────────── */
-@media (min-width: 901px) {
-    /* Dashboard root flex — compensate for collapsing sidebar */
-    .dashboard-layout {
-        padding     : 12px;
-        gap         : 12px;
-        overflow    : hidden;
-        height      : 100vh;
-    }
-
-    /* ── Sidebar base: icon-only (collapsed) ── */
-    .sidebar {
-        width           : var(--sidebar-collapsed-w);
-        min-width       : var(--sidebar-collapsed-w);
-        transition      : var(--sidebar-transition);
-        overflow        : hidden;
-        flex-shrink     : 0;
-        z-index         : 100;
-        position        : relative;
-    }
-    /* Expand on hover */
-    .sidebar:hover {
-        width    : var(--sidebar-expanded-w);
-        min-width: var(--sidebar-expanded-w);
-    }
-
-    /* ── Brand: always show icon, hide text when collapsed ── */
-    .sidebar-brand .brand-text {
-        opacity          : 0;
-        width            : 0;
-        overflow         : hidden;
-        white-space      : nowrap;
-        transition       : opacity 0.22s ease, width 0.22s ease;
-    }
-    .sidebar:hover .sidebar-brand .brand-text {
-        opacity : 1;
-        width   : auto;
-    }
-
-    /* ── Upload button: shrink to circle icon when collapsed ── */
-    .btn-upload-trigger span {
-        opacity    : 0;
-        width      : 0;
-        overflow   : hidden;
-        white-space: nowrap;
-        transition : opacity 0.2s ease, width 0.2s ease;
-    }
-    .sidebar:hover .btn-upload-trigger span {
-        opacity : 1;
-        width   : auto;
-    }
-    .btn-upload-trigger {
-        padding         : 12px;
-        justify-content : center;
-        min-width       : 0;
-        transition      : padding 0.22s ease, var(--trans-bouncy);
-    }
-    .sidebar:hover .btn-upload-trigger {
-        padding : 14px;
-    }
-
-    /* ── Nav items: hide label text when collapsed ── */
-    .nav-item span {
-        opacity    : 0;
-        width      : 0;
-        overflow   : hidden;
-        white-space: nowrap;
-        transition : opacity 0.2s ease, width 0.2s ease;
-    }
-    .sidebar:hover .nav-item span {
-        opacity : 1;
-        width   : auto;
-    }
-    .nav-item {
-        padding         : 12px;
-        justify-content : center;
-        transition      : padding 0.22s ease, background 0.2s ease, color 0.2s ease;
-    }
-    .sidebar:hover .nav-item {
-        padding         : 12px 16px;
-        justify-content : flex-start;
-    }
-    /* left-border active indicator still works */
-    .nav-item.active {
-        border-left : 4px solid var(--accent-violet);
-    }
-
-    /* ── Storage card: hidden when collapsed ── */
-    .storage-card {
-        opacity        : 0;
-        max-height     : 0;
-        overflow       : hidden;
-        padding        : 0;
-        margin         : 0;
-        transition     : opacity 0.25s ease, max-height 0.3s ease, padding 0.25s ease;
-    }
-    .sidebar:hover .storage-card {
-        opacity    : 1;
-        max-height : 160px;
-        padding    : 16px;
-        margin-top : auto;
-    }
-
-    /* ── Main workspace fills remaining space ── */
-    .main-workspace {
-        flex           : 1;
-        min-width      : 0;
-        overflow       : hidden;
-        display        : flex;
-        flex-direction : column;
-    }
-
-    /* Hamburger hidden on desktop */
-    .hamburger-btn { display: none !important; }
+/* ── 2. FLUID SIDEBAR WIDTH ─────────────────────────── */
+.sidebar {
+    width: var(--sidebar-w);
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   HEADER BLOCK — search + stats pinned at top, NOT scrolling
-───────────────────────────────────────────────────────────────── */
-@media (min-width: 901px) {
-    .top-header {
-        flex-shrink : 0;  /* never compress */
-        height      : 70px;
-    }
+/* ── 3. STATS BANNER — FLUID AUTO-FIT GRID ─────────── */
+.stats-banner {
+    grid-template-columns: repeat(auto-fit, minmax(clamp(160px, 22%, 240px), 1fr));
+    gap: var(--sp-sm);
+    padding: var(--sp-sm) var(--sp-md);
+}
 
-    /* Stats banner = drop zone — distinct section, not scrolling */
-    .stats-dropzone-wrapper {
-        flex-shrink     : 0;
-        position        : relative;
-        padding         : 0 24px;
-        border-bottom   : 1px solid rgba(255,255,255,0.06);
-        transition      : background 0.25s ease;
-    }
-    .stats-dropzone-wrapper.drag-over {
-        background      : var(--dropzone-active-bg);
-        border-color    : rgba(139, 92, 246, 0.4);
-    }
+/* ── 4. DATA-VIEW SCROLLER — TOUCH INERTIA ─────────── */
+.data-view-scroller {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    overscroll-behavior-y: contain;
+}
+
+/* ── 5. TOUCH TARGET SIZE — ALL INTERACTIVE ELEMENTS ── */
+.nav-item,
+.btn,
+.btn-upload-trigger,
+.btn-sm,
+.btn-toggle,
+.kebab-btn,
+.dropdown-menu-item,
+.btn-ctrl-action,
+.close-modal-btn,
+.close-drawer-btn,
+.panel-action-btn {
+    min-height: var(--touch-min);
+}
+
+/* Keep small display buttons from bloating on desktop */
+@media (min-width: 1025px) {
+    .btn-sm { min-height: 36px; }
+    .btn-toggle { min-height: 36px; }
+    .panel-action-btn { min-height: 32px; }
+}
+
+/* ── 6. OVERFLOW PROTECTION — FILE NAMES / CODE ──────── */
+.file-name-text {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(300px, 40vw);
+}
+
+/* pre/code trong text preview khỏi bể layout */
+.modal-body-content pre,
+.modal-body-content code {
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: var(--fs-xs);
+    line-height: 1.6;
+    background: rgba(0,0,0,0.35);
+    border-radius: 8px;
+    padding: 16px;
+    color: #a5f3fc;
+}
+
+/* ── 7. MODAL — RESPONSIVE & GPU ANIMATION ───────────── */
+.modal-content-wrapper {
+    width: min(95vw, 900px);
+    max-height: 92dvh;       /* dvh: safe area aware */
+    will-change: transform, opacity;
+}
+
+/* Mở modal dùng transform thay vì width/left để GPU render */
+.modal {
+    will-change: opacity;
+    transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal[style*="display: flex"] .modal-content-wrapper,
+.modal[style*="display:flex"] .modal-content-wrapper {
+    animation: modalSlideGPU 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modalSlideGPU {
+    from { opacity: 0; transform: translateY(24px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+/* ── 8. SIDEBAR DRAWER — GPU SLIDE (MOBILE) ─────────── */
+/* Base: sidebar dùng transform nếu trạng thái drawer được toggle */
+.sidebar {
+    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity  0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── 9. PROGRESS PANEL — RESPONSIVE POSITION ─────────── */
+.mini-progress-panel {
+    width: min(380px, calc(100vw - 32px));
+    bottom: clamp(12px, 3vh, 24px);
+    right: clamp(12px, 3vw, 24px);
+}
+
+/* ── 10. TOAST — NEVER OVERLAP PROGRESS PANEL ────────── */
+.toast-container {
+    bottom: clamp(90px, 18vh, 120px);
+    left: clamp(12px, 2vw, 24px);
+    max-width: calc(100vw - 24px);
+}
+
+/* ── 11. CONTEXT MENU — SAFE FROM EDGE ───────────────── */
+.custom-dropdown-menu {
+    min-width: clamp(180px, 40vw, 220px);
+    max-width: calc(100vw - 24px);
+}
+
+/* ── 12. TABLE — FLUID COLUMNS ──────────────────────── */
+.modern-table {
+    font-size: var(--fs-sm);
+}
+
+.modern-table th,
+.modern-table td {
+    padding: clamp(8px, 1.5vw, 14px) clamp(6px, 1vw, 12px);
+}
+
+/* ── 13. GRID VIEW — FLUID MIN-ITEM WIDTH ──────────── */
+.file-grid-view-container {
+    grid-template-columns: repeat(auto-fill, minmax(clamp(140px, 20%, 220px), 1fr));
+    gap: clamp(10px, 1.5vw, 16px);
+}
+
+#file-grid-view {
+    grid-template-columns: repeat(auto-fill, minmax(clamp(140px, 20%, 220px), 1fr));
+    gap: clamp(10px, 1.5vw, 16px);
+    padding: clamp(10px, 2vw, 16px);
+}
+
+/* ── 14. ACTION TOOLBAR — WRAP ON MEDIUM SCREENS ────── */
+.action-toolbar {
+    flex-wrap: wrap;
+    gap: var(--sp-xs);
+    padding: clamp(10px, 1.5vw, 16px) clamp(12px, 2vw, 24px);
+}
+
+.toolbar-right {
+    flex-wrap: wrap;
+    gap: var(--sp-xs);
+}
+
+/* ── 15. TOP HEADER — FLUID PADDING ─────────────────── */
+.top-header {
+    padding: 0 clamp(12px, 2vw, 24px);
+    height: clamp(56px, 8vh, 70px);
+}
+
+#search-input {
+    font-size: var(--fs-sm);
+}
+
+/* ── 16. FILE DETAILS DRAWER — SCROLL SAFE ──────────── */
+.file-details-drawer {
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.meta-grid-info p {
+    font-size: var(--fs-sm);
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+/* ── 17. LOG TERMINAL — SCROLL INERTIA ──────────────── */
+.log-terminal-box {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* ══════════════════════════════════════════════════════
+   BREAKPOINT: LAPTOP NHỎ & TABLET NGANG (901px–1366px)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 1366px) and (min-width: 901px) {
+    .sidebar { width: clamp(200px, 18vw, 240px); }
+
     .stats-banner {
-        border-bottom   : none;   /* remove original bottom border — wrapper has it */
-        padding-bottom  : 20px;
+        grid-template-columns: repeat(3, 1fr);
+        padding: 12px 16px;
     }
 
-    /* File list center-wrapper: takes all remaining vertical space, scrolls */
-    .file-list-center-wrapper {
-        flex          : 1;
-        min-height    : 0;
-        overflow      : hidden;
-        display       : flex;
-        flex-direction: column;
+    .stat-value { font-size: clamp(16px, 2vw, 22px); }
+
+    .file-name-text { max-width: clamp(140px, 25vw, 260px); }
+
+    /* Ẩn cột Ngày tạo trên laptop nhỏ để còn chỗ */
+    @media (max-width: 1100px) {
+        .modern-table th:nth-child(5),
+        .modern-table td:nth-child(5) { display: none; }
     }
 
-    /* data-view-scroller: the only scrollable region */
-    .data-view-scroller {
-        flex                      : 1;
-        min-height                : 0;
-        overflow-y                : auto;
-        -webkit-overflow-scrolling: touch;
-        /* Center content */
-        padding                   : 0 24px 24px;
-    }
-
-    /* Centered file list container */
-    .file-list-view-container,
-    .file-grid-view-container {
-        max-width    : var(--filelist-max-w);
-        margin       : 16px auto 0;
-    }
-
-    /* Action toolbar pinned above the scroll region */
-    .action-toolbar {
-        flex-shrink  : 0;
-        padding      : 12px 24px;
-        max-width    : var(--filelist-max-w);
-        margin       : 0 auto;
-        width        : 100%;
-    }
+    .system-status { display: none; } /* Tiết kiệm header space */
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   DROP-ZONE HINT TEXT
-───────────────────────────────────────────────────────────────── */
-.dropzone-hint {
-    position      : absolute;
-    inset         : 0;
-    display       : flex;
-    align-items   : center;
-    justify-content: center;
-    gap           : 12px;
-    font-size     : 18px;
-    font-weight   : 700;
-    color         : var(--accent-violet);
-    background    : rgba(139, 92, 246, 0.08);
-    border        : 2px dashed rgba(139, 92, 246, 0.5);
-    border-radius : 16px;
-    z-index       : 10;
-    pointer-events: none;
-    animation     : pulseBorder 1.5s ease-in-out infinite;
-}
-@keyframes pulseBorder {
-    0%, 100% { border-color: rgba(139, 92, 246, 0.4); }
-    50%       { border-color: rgba(139, 92, 246, 0.85); }
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   MOBILE / TABLET (≤ 900px) — Off-canvas drawer sidebar
-───────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════
+   BREAKPOINT: TABLET DỌC & MOBILE LỚN (max 900px)
+   ══════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
-    /* Body: allow scroll */
-    body { overflow: auto; height: auto; }
+    body { overflow: auto; } /* Cho phép body scroll trên mobile */
 
+    /* Dashboard chuyển sang dọc */
     .dashboard-layout {
-        flex-direction : column;
-        height         : auto;
-        min-height     : 100vh;
-        padding        : 0;
-        gap            : 0;
+        flex-direction: column;
+        padding: 8px;
+        gap: 8px;
+        height: auto;
+        min-height: 100dvh;
     }
 
-    /* ── Sidebar: hidden off-canvas left ── */
+    /* Sidebar chuyển thành thanh ngang cuộn */
     .sidebar {
-        position        : fixed;
-        top             : 0;
-        left            : 0;
-        height          : 100vh;
-        width           : 280px;
-        z-index         : 1100;
-        transform       : translateX(-100%);
-        transition      : transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-        border-radius   : 0 var(--radius-lg) var(--radius-lg) 0;
-        padding         : 20px 16px;
-        overflow-y      : auto;
-        /* Keep original glass bg */
-        background      : rgba(11, 15, 25, 0.97);
-        backdrop-filter : blur(24px);
-    }
-    .sidebar.drawer-open {
-        transform : translateX(0);
-        box-shadow: 8px 0 40px rgba(0, 0, 0, 0.7);
-    }
-    /* Sidebar brand always fully visible in drawer */
-    .sidebar-brand .brand-text { opacity: 1 !important; width: auto !important; }
-    .btn-upload-trigger span    { opacity: 1 !important; width: auto !important; }
-    .nav-item span              { opacity: 1 !important; width: auto !important; }
-    .nav-item { padding: 12px 16px !important; justify-content: flex-start !important; }
-    .storage-card { opacity: 1 !important; max-height: 200px !important; padding: 16px !important; margin-top: 24px !important; }
-
-    /* ── Hamburger: always visible on mobile ── */
-    .hamburger-btn { display: flex !important; }
-
-    /* ── Main workspace: full-width column ── */
-    .main-workspace {
-        flex           : none;
-        width          : 100%;
-        height         : auto;
-        border-radius  : 0;
-        overflow       : visible;
-    }
-
-    /* ── Top header: compact ── */
-    .top-header {
-        padding         : 12px 16px 12px 68px; /* left-pad for hamburger */
-        height          : auto;
-        flex-wrap       : wrap;
-        gap             : 10px;
-    }
-    .search-container { max-width: 100%; width: 100%; }
-    .header-right-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
-    .system-status { display: none; } /* hide on very small screens */
-
-    /* ── Stats banner + dropzone wrapper ── */
-    .stats-dropzone-wrapper { padding: 0 12px; }
-    .stats-banner {
-        grid-template-columns : 1fr;
-        padding               : 12px 0;
-        gap                   : 10px;
-    }
-    .mini-stat-card { padding: 12px; }
-
-    /* ── Action toolbar ── */
-    .action-toolbar {
-        flex-direction  : column;
-        align-items     : flex-start;
-        padding         : 12px 16px;
-        gap             : 10px;
-    }
-    .toolbar-right {
-        flex-wrap : wrap;
-        gap       : 8px;
-        width     : 100%;
-    }
-
-    /* ── File list center wrapper ── */
-    .file-list-center-wrapper {
-        overflow    : visible;
-        min-height  : 0;
-    }
-
-    /* ── Data scroller: smooth touch scroll ── */
-    .data-view-scroller {
-        overflow-y                : auto;
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        padding: 10px 12px;
+        gap: 10px;
+        overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        padding                   : 0 12px 100px; /* bottom pad for floating panel */
-        max-height                : none;
+        overscroll-behavior-x: contain;
+        border-radius: var(--radius-md);
     }
 
-    /* ── Table: hide size/date columns on phones ── */
+    .sidebar-brand { margin-bottom: 0; font-size: 18px; white-space: nowrap; }
+    .brand-text { display: none; } /* Icon only trên tablet */
+
+    .upload-action-wrapper { margin-bottom: 0; flex-shrink: 0; }
+
+    .btn-upload-trigger {
+        padding: 10px 16px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .sidebar-nav {
+        flex-direction: row;
+        flex: 1;
+        overflow-x: auto;
+        gap: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .nav-item {
+        flex-direction: column;
+        padding: 8px 12px;
+        gap: 4px;
+        font-size: 11px;
+        white-space: nowrap;
+        min-width: 60px;
+        text-align: center;
+    }
+
+    .nav-item i { font-size: 18px; width: auto; }
+    .nav-item.active { border-left: none; border-bottom: 3px solid var(--accent-violet); }
+
+    .storage-card { display: none; }
+
+    /* Main workspace không bị cắt */
+    .main-workspace {
+        border-radius: var(--radius-md);
+        overflow: visible;
+    }
+
+    /* Header dọc */
+    .top-header {
+        flex-direction: column;
+        height: auto;
+        padding: 10px 12px;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .search-container { max-width: 100%; }
+
+    .header-right-actions {
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .system-status { display: none; }
+    .username { display: none; }
+
+    /* Stats banner: 2 cột hoặc 1 cột */
+    .stats-banner {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        padding: 10px 12px;
+        gap: 10px;
+    }
+
+    .mini-stat-card { padding: 10px 12px; gap: 10px; }
+    .card-icon { width: 36px; height: 36px; font-size: 16px; }
+    .stat-value { font-size: 18px; }
+    .stat-label { font-size: 11px; }
+
+    /* Action toolbar dọc */
+    .action-toolbar { flex-direction: column; align-items: flex-start; }
+    .toolbar-left, .toolbar-right { width: 100%; flex-wrap: wrap; }
+
+    /* Data scroller không bị cố định chiều cao */
+    .data-view-scroller { padding: 0 12px 16px; }
+
+    /* Bảng file: ẩn cột Kích thước & Ngày */
     .modern-table th:nth-child(4),
     .modern-table td:nth-child(4),
     .modern-table th:nth-child(5),
-    .modern-table td:nth-child(5) {
-        display : none;
-    }
-    .modern-table th:nth-child(2),
-    .modern-table td:nth-child(2) {
-        display : none; /* hide STT column */
-    }
-    .file-name-text { max-width: 200px; }
+    .modern-table td:nth-child(5) { display: none; }
 
-    /* ── Grid view: 2-column on tablet, 1-column on small phone ── */
+    /* File name col rộng hơn vì còn lại ít cột */
+    .file-name-text { max-width: min(55vw, 280px); }
+
+    /* Progress panel full width */
+    .mini-progress-panel {
+        bottom: 0;
+        right: 0;
+        left: 0;
+        width: 100%;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        border-bottom: none;
+    }
+
+    /* Toast ngay trên progress panel */
+    .toast-container {
+        bottom: 120px;
+        left: 12px;
+    }
+
+    /* Modal toàn màn hình */
+    .modal-content-wrapper {
+        width: 100%;
+        max-width: 100%;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+
+    .modal-body-content {
+        min-height: 40vh;
+        max-height: 70dvh;
+    }
+
+    /* Context menu - tránh tràn cạnh */
+    .custom-dropdown-menu {
+        position: fixed !important;
+        min-width: min(260px, 90vw);
+    }
+}
+
+/* ══════════════════════════════════════════════════════
+   BREAKPOINT: MOBILE NHỎ (max 600px)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+    .dashboard-layout { padding: 6px; gap: 6px; }
+
+    /* Sidebar bottom nav (native app style) */
+    .sidebar {
+        order: 10; /* Chuyển xuống cuối flex */
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        padding: 6px 8px;
+        position: sticky;
+        bottom: 0;
+        z-index: 100;
+    }
+
+    .sidebar-brand { display: none; }      /* Ẩn logo */
+    .upload-action-wrapper { order: -1; }  /* Upload first */
+
+    .btn-upload-trigger {
+        padding: 8px 12px;
+        font-size: 12px;
+        gap: 6px;
+    }
+
+    .btn-upload-trigger span { display: none; } /* Icon only */
+    .btn-upload-trigger::after {
+        content: "+";
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .nav-item span { display: none; } /* Icon-only bottom nav */
+    .nav-item { min-width: 44px; padding: 8px; }
+
+    /* Stats: 1 cột */
+    .stats-banner { grid-template-columns: 1fr; }
+
+    /* Bảng: Chỉ giữ cột STT + Tên + Action */
+    .modern-table th:nth-child(1),
+    .modern-table td:nth-child(1) { display: none; } /* checkbox ẩn (dùng long-press thay thế) */
+
+    .modern-table th:nth-child(4),
+    .modern-table td:nth-child(4),
+    .modern-table th:nth-child(5),
+    .modern-table td:nth-child(5) { display: none; }
+
+    .file-name-text { max-width: clamp(120px, 55vw, 240px); }
+
+    /* Login card co lại */
+    .login-card { padding: 28px 20px; }
+    .login-logo-zone { font-size: 36px; }
+    .logo-text { font-size: 22px; }
+    .subtitle { font-size: 13px; margin-bottom: 20px; }
+
+    /* Grid view: 2 cột cố định trên mobile nhỏ */
     .file-grid-view-container,
     #file-grid-view {
         grid-template-columns: repeat(2, 1fr);
@@ -1112,60 +1176,172 @@ body {
         padding: 10px;
     }
 
-    /* ── Mini progress panel: full-width bottom ── */
-    .mini-progress-panel {
-        width  : calc(100vw - 24px);
-        right  : 12px;
-        bottom : 12px;
-        left   : 12px;
-    }
+    .grid-card { padding: 12px 10px; }
+    .grid-icon-preview { width: 40px; height: 40px; font-size: 20px; }
+    .grid-card-body .file-name { font-size: 12px; }
 
-    /* ── Modal: 95% wide, touch-friendly buttons ── */
-    .modal-content-wrapper {
-        width     : 95%;
-        max-height: 92vh;
-    }
-    .close-modal-btn { width: 44px; height: 44px; font-size: 22px; }
-
-    /* ── Details drawer ── */
+    /* Details drawer full height */
     .file-details-drawer {
-        margin : 0 12px 12px;
+        max-height: 85dvh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        z-index: 500;
+        margin: 0;
+        border-left: none; border-right: none; border-bottom: none;
+    }
+
+    /* Toolbar: ẩn label, icon only */
+    .view-title { font-size: 15px; }
+
+    .select-custom { font-size: 12px; padding: 8px; }
+
+    .btn-sm { font-size: 12px; padding: 8px 10px; }
+
+    /* Toast nhỏ gọn hơn */
+    .toast-msg {
+        min-width: auto;
+        max-width: calc(100vw - 24px);
+        font-size: 12px;
+        padding: 10px 14px;
+    }
+
+    /* Progress panel */
+    .process-file-info { flex-direction: column; gap: 2px; }
+    .process-filename { max-width: 100%; }
+
+    /* Modal body compact */
+    .modal-body-content {
+        padding: 12px;
+        min-height: 200px;
+    }
+
+    .modal-header-bar { padding: 12px 16px; }
+    .modal-title-text { font-size: 14px; }
+}
+
+/* ══════════════════════════════════════════════════════
+   BREAKPOINT: SIÊU NHỎ (max 375px — iPhone SE, Galaxy S)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 375px) {
+    .file-name-text { max-width: clamp(100px, 45vw, 180px); }
+
+    .file-grid-view-container,
+    #file-grid-view { grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .btn-upload-trigger { padding: 8px; }
+}
+
+/* ══════════════════════════════════════════════════════
+   BREAKPOINT: 4K / ULTRA-WIDE (min 1920px)
+   ══════════════════════════════════════════════════════ */
+@media (min-width: 1920px) {
+    .sidebar { width: clamp(260px, 16vw, 320px); }
+
+    .stats-banner {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        padding: 24px 32px;
+    }
+
+    .dashboard-layout { padding: 20px; gap: 20px; }
+
+    .data-view-scroller { padding: 0 32px 32px; }
+
+    .file-name-text { max-width: clamp(300px, 30vw, 500px); }
+
+    .file-grid-view-container,
+    #file-grid-view {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 24px;
     }
 }
 
-/* Very small phones (≤ 420px) */
-@media (max-width: 420px) {
-    #file-grid-view,
-    .file-grid-view-container {
-        grid-template-columns: 1fr;
+/* ══════════════════════════════════════════════════════
+   PERFORMANCE: GPU LAYER HINTS
+   ══════════════════════════════════════════════════════ */
+.modal,
+.modal-content-wrapper,
+.mini-progress-panel,
+.custom-dropdown-menu,
+.action-menu,
+.toast-msg,
+.file-details-drawer {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* ══════════════════════════════════════════════════════
+   PRINT — Ẩn UI chrome khi in
+   ══════════════════════════════════════════════════════ */
+@media print {
+    .sidebar, .top-header, .action-toolbar,
+    .mini-progress-panel, .toast-container,
+    .custom-dropdown-menu, .modal { display: none !important; }
+
+    .dashboard-layout { display: block; }
+    .main-workspace { box-shadow: none; border: none; }
+    .modern-table { font-size: 12px; }
+    .data-view-scroller { overflow: visible; }
+}
+
+/* ══════════════════════════════════════════════════════
+   PREFERS-REDUCED-MOTION — Tắt animation cho người dùng
+   nhạy cảm chuyển động (accessibility)
+   ══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
-    .btn-sm { padding: 8px 10px; font-size: 12px; }
-    .username { display: none; }
+
+    .blob { animation: none; }
+    .liquid-progress-bar { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   SMOOTH SCROLLBAR for the file list
-───────────────────────────────────────────────────────────────── */
-.data-view-scroller {
-    scroll-behavior               : smooth;
-    -webkit-overflow-scrolling    : touch;
+/* ══════════════════════════════════════════════════════
+   DARK MODE explicit (đã là dark, nhưng thêm để
+   Safari/iOS không tự override)
+   ══════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: light) {
+    /* Dự án này chỉ có dark mode. Override lại tất cả */
+    body { background-color: var(--bg-base); color: var(--text-main); }
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   TABLE RESPONSIVENESS (tablet intermediate)
-───────────────────────────────────────────────────────────────── */
-@media (max-width: 700px) and (min-width: 421px) {
-    .modern-table th:nth-child(5),
-    .modern-table td:nth-child(5) { display: none; }
-    .file-name-text { max-width: 220px; }
+/* ── HELPER CLASSES ADDED VIA HTML ADDITIVE EDIT ────── */
+.table-mobile-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   DRAG-OVER visual for the whole workspace on mobile
-───────────────────────────────────────────────────────────────── */
-.stats-dropzone-wrapper.drag-over .stats-banner {
-    opacity : 0.3;
-    filter  : blur(2px);
-    pointer-events: none;
-    transition: opacity 0.2s ease, filter 0.2s ease;
+.touch-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* Safe area insets cho iPhone X+ notch / home bar */
+@supports (padding: max(0px)) {
+    .sidebar {
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
+    .mini-progress-panel {
+        bottom: max(24px, env(safe-area-inset-bottom));
+    }
+
+    @media (max-width: 600px) {
+        .sidebar {
+            padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+    }
+
+    .login-page {
+        padding-bottom: max(20px, env(safe-area-inset-bottom));
+        padding-top: max(20px, env(safe-area-inset-top));
+    }
 }
