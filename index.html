@@ -93,30 +93,38 @@
             </div>
         </aside>
 
-        <main class="main-workspace">
-            
-            <header class="top-header">
-                <div class="search-container">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="search" id="search-input" placeholder="Tìm kiếm nhanh tệp tin, tài liệu, media...">
+<main class="main-workspace">
+
+    <!-- ╔═══════════════════════════════════════════════╗
+         ║  KHỐI TRÊN CÙNG: HEADER + STATS + DROP ZONE   ║
+         ╚═══════════════════════════════════════════════╝ -->
+    <div class="header-stats-wrapper">
+
+        <header class="top-header">
+            <div class="search-container">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="search" id="search-input" placeholder="Tìm kiếm nhanh tệp tin, tài liệu, media...">
+            </div>
+
+            <div class="header-right-actions">
+                <div class="system-status">
+                    <span class="status-indicator-dot"></span>
+                    <span class="status-badge">Hệ thống trực tuyến</span>
                 </div>
-                
-                <div class="header-right-actions">
-                    <div class="system-status">
-                        <span class="status-indicator-dot"></span>
-                        <span class="status-badge">Hệ thống trực tuyến</span>
+                <div class="user-profile">
+                    <div class="avatar">
+                        <i class="fa-solid fa-user-gear"></i>
                     </div>
-                    <div class="user-profile">
-                        <div class="avatar">
-                            <i class="fa-solid fa-user-gear"></i>
-                        </div>
-                        <span class="username">Admin</span>
-                    </div>
-                    <button class="btn btn-danger-icon logout-btn" title="Đăng xuất khỏi hệ thống">
-                        <i class="fa-solid fa-power-off"></i>
-                    </button>
+                    <span class="username">Admin</span>
                 </div>
-            </header>
+                <button class="btn btn-danger-icon logout-btn" title="Đăng xuất khỏi hệ thống">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Vùng chứa Stats + DropZone nằm ngang -->
+        <div class="stats-dropzone-row" id="stats-dropzone-wrapper">
 
             <section class="stats-banner">
                 <div class="mini-stat-card">
@@ -142,122 +150,145 @@
                 </div>
             </section>
 
-            <div class="action-toolbar">
-                <div class="toolbar-left">
-                    <h2 class="view-title" id="current-view-title">Bộ nhớ của tôi</h2>
-                    <div class="bulk-actions-group" id="bulk-actions-group" style="display: none;">
-                        <span class="selected-count">Đã chọn 0 mục</span>
-                        <button class="btn btn-sm btn-danger" id="btn-bulk-delete">
-                            <i class="fa-solid fa-trash"></i> Xóa các mục đã chọn
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="toolbar-right">
-                    <div class="sort-select-wrapper">
-                        <select id="sort-select" class="select-custom">
-                            <option value="date-desc">Mới nhất trước</option>
-                            <option value="date-asc">Cũ nhất trước</option>
-                            <option value="name-asc">Tên từ A-Z</option>
-                            <option value="name-desc">Tên từ Z-A</option>
-                            <option value="size-desc">Kích thước lớn nhất</option>
-                            <option value="size-asc">Kích thước nhỏ nhất</option>
-                        </select>
-                    </div>
-
-                    <button class="btn btn-sm btn-secondary" id="btn-empty-trash" style="display: none;">
-                        <i class="fa-solid fa-dumpster-fire"></i> Dọn sạch thùng rác
-                    </button>
-                    <button class="btn btn-sm btn-secondary" id="btn-clear-all" style="display: inline-flex;">
-                        <i class="fa-solid fa-triangle-exclamation"></i> Xóa toàn bộ KV
-                    </button>
-
-                    <div class="view-toggle-buttons">
-                        <button class="btn-toggle active" id="view-list-toggle" title="Xem dạng danh sách">
-                            <i class="fa-solid fa-list"></i>
-                        </button>
-                        <button class="btn-toggle" id="view-grid-toggle" title="Xem dạng lưới ô vuông">
-                            <i class="fa-solid fa-grid-2"></i>
-                        </button>
-                    </div>
+            <!-- ★ DROP ZONE KHỔNG LỒ MỚI -->
+            <div id="drop-zone-area" class="drop-zone-area">
+                <div class="drop-zone-inner" id="dropzone-hint">
+                    <i class="fa-solid fa-cloud-arrow-up drop-zone-icon"></i>
+                    <p class="drop-zone-title">Kéo & Thả tệp vào đây</p>
+                    <p class="drop-zone-sub">hoặc bấm để chọn tệp tải lên</p>
                 </div>
             </div>
 
-            <div class="data-view-scroller" id="data-view-scroller" role="main" aria-label="Danh sách tệp tin">
-                
-                <div id="file-list-view" class="file-list-view-container table-mobile-wrap">
-                    <table class="modern-table">
+        </div>
+    </div>
+
+    <!-- ╔═══════════════════════════════════════════════╗
+         ║  KHỐI CHÍNH GIỮA: TOOLBAR + DANH SÁCH TỆP     ║
+         ╚═══════════════════════════════════════════════╝ -->
+    <div class="file-list-center glass-panel">
+
+        <div class="action-toolbar">
+            <div class="toolbar-left">
+                <h2 class="view-title" id="current-view-title">Bộ nhớ của tôi</h2>
+                <div class="bulk-actions-group" id="bulk-actions-group" style="display: none;">
+                    <span class="selected-count">Đã chọn 0 mục</span>
+                    <button class="btn btn-sm btn-danger" id="btn-bulk-delete">
+                        <i class="fa-solid fa-trash"></i> Xóa các mục đã chọn
+                    </button>
+                </div>
+            </div>
+
+            <div class="toolbar-right">
+                <div class="sort-select-wrapper">
+                    <select id="sort-select" class="select-custom">
+                        <option value="date-desc">Mới nhất trước</option>
+                        <option value="date-asc">Cũ nhất trước</option>
+                        <option value="name-asc">Tên từ A-Z</option>
+                        <option value="name-desc">Tên từ Z-A</option>
+                        <option value="size-desc">Kích thước lớn nhất</option>
+                        <option value="size-asc">Kích thước nhỏ nhất</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-sm btn-secondary" id="btn-empty-trash" style="display: none;">
+                    <i class="fa-solid fa-dumpster-fire"></i> Dọn sạch thùng rác
+                </button>
+                <button class="btn btn-sm btn-secondary" id="btn-clear-all" style="display: inline-flex;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Xóa toàn bộ KV
+                </button>
+
+                <div class="view-toggle-buttons">
+                    <button class="btn-toggle active" id="view-list-toggle" title="Xem dạng danh sách">
+                        <i class="fa-solid fa-list"></i>
+                    </button>
+                    <button class="btn-toggle" id="view-grid-toggle" title="Xem dạng lưới ô vuông">
+                        <i class="fa-solid fa-grid-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="data-view-scroller touch-scroll" id="data-view-scroller" role="main" aria-label="Danh sách tệp tin">
+
+            <div id="file-list-view" class="file-list-view-container table-mobile-wrap">
+                <table class="modern-table">
+                    <thead>
+                        <tr>
+                            <th width="40" style="text-align: center;">
+                                <input type="checkbox" id="th-check-all" class="custom-checkbox">
+                            </th>
+                            <th width="60" style="text-align: center;">STT</th>
+                            <th>Tên tệp tin</th>
+                            <th width="140">Kích thước</th>
+                            <th width="180">Ngày tạo</th>
+                            <th width="60" style="text-align: center;">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="main-files-table-body">
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="file-grid-view" class="file-grid-view-container" style="display: none;">
+            </div>
+
+            <div class="empty-state-view" id="empty-state-view" style="display: none;">
+                <div class="empty-icon-box">
+                    <i class="fa-solid fa-folder-open"></i>
+                </div>
+                <h3>Thư mục này trống rỗng</h3>
+                <p>Hãy kéo thả tệp vào đây hoặc bấm nút "Tải lên mới" để bắt đầu lưu trữ.</p>
+            </div>
+        </div>
+
+        <section id="internal-logs-section" class="internal-logs-panel" style="display: none;">
+            <div class="panel-header">
+                <h3><i class="fa-solid fa-terminal"></i> Console Log thời gian thực</h3>
+                <button class="btn btn-sm btn-secondary" onclick="document.querySelector('.log-list').innerHTML=''"><i class="fa-solid fa-broom"></i> Xóa log</button>
+            </div>
+            <div class="log-terminal-box">
+                <ul class="log-list"></ul>
+            </div>
+        </section>
+
+        <section id="file-details-section" class="file-details-drawer" style="display: none;">
+            <div class="drawer-header">
+                <h3><i class="fa-solid fa-circle-info"></i> Cấu trúc phân mảnh tệp dữ liệu</h3>
+                <button class="close-drawer-btn" id="close-details-btn">&times;</button>
+            </div>
+            <div class="drawer-body">
+                <div class="meta-profile">
+                    <div class="meta-file-icon" id="detail-icon-box"><i class="fa-solid fa-file"></i></div>
+                    <h4 id="detail-title-text" class="detail-name">Tên_file.zip</h4>
+                </div>
+                <div class="meta-grid-info">
+                    <p><strong>Mã định danh UUID:</strong> <span class="detail-id">-</span></p>
+                    <p><strong>Tổng kích thước:</strong> <span class="detail-size">-</span></p>
+                    <p><strong>Số lượng Part cắt mảnh:</strong> <span class="detail-parts">-</span></p>
+                    <p><strong>Trạng thái Endpoint:</strong> <span class="detail-status">-</span></p>
+                </div>
+                <div class="table-wrapper-mini">
+                    <table class="mini-table">
                         <thead>
                             <tr>
-                                <th width="40" style="text-align: center;">
-                                    <input type="checkbox" id="th-check-all" class="custom-checkbox">
-                                </th>
-                                <th width="60" style="text-align: center;">STT</th>
-                                <th>Tên tệp tin</th>
-                                <th width="140">Kích thước</th>
-                                <th width="180">Ngày tạo</th>
-                                <th width="60" style="text-align: center;">Thao tác</th>
+                                <th width="70">Part STT</th>
+                                <th>Kích thước Part</th>
+                                <th>Telegram File ID</th>
                             </tr>
                         </thead>
-                        <tbody id="main-files-table-body">
-                            </tbody>
+                        <tbody class="part-table-body">
+                        </tbody>
                     </table>
                 </div>
-
-                <div id="file-grid-view" class="file-grid-view-container" style="display: none;">
-                    </div>
-
-                <div class="empty-state-view" id="empty-state-view" style="display: none;">
-                    <div class="empty-icon-box">
-                        <i class="fa-solid fa-folder-open"></i>
-                    </div>
-                    <h3>Thư mục này trống rỗng</h3>
-                    <p>Hãy kéo thả tệp vào đây hoặc bấm nút "Tải lên mới" để bắt đầu lưu trữ.</p>
-                </div>
             </div>
+        </section>
 
-            <section id="internal-logs-section" class="internal-logs-panel" style="display: none;">
-                <div class="panel-header">
-                    <h3><i class="fa-solid fa-terminal"></i> Console Log thời gian thực</h3>
-                    <button class="btn btn-sm btn-secondary" onclick="document.querySelector('.log-list').innerHTML=''"><i class="fa-solid fa-broom"></i> Xóa log</button>
-                </div>
-                <div class="log-terminal-box">
-                    <ul class="log-list"></ul>
-                </div>
-            </section>
+    </div><!-- /.file-list-center -->
 
-            <section id="file-details-section" class="file-details-drawer" style="display: none;">
-                <div class="drawer-header">
-                    <h3><i class="fa-solid fa-circle-info"></i> Cấu trúc phân mảnh tệp dữ liệu</h3>
-                    <button class="close-drawer-btn" id="close-details-btn">&times;</button>
-                </div>
-                <div class="drawer-body">
-                    <div class="meta-profile">
-                        <div class="meta-file-icon" id="detail-icon-box"><i class="fa-solid fa-file"></i></div>
-                        <h4 id="detail-title-text" class="detail-name">Tên_file.zip</h4>
-                    </div>
-                    <div class="meta-grid-info">
-                        <p><strong>Mã định danh UUID:</strong> <span class="detail-id">-</span></p>
-                        <p><strong>Tổng kích thước:</strong> <span class="detail-size">-</span></p>
-                        <p><strong>Số lượng Part cắt mảnh:</strong> <span class="detail-parts">-</span></p>
-                        <p><strong>Trạng thái Endpoint:</strong> <span class="detail-status">-</span></p>
-                    </div>
-                    <div class="table-wrapper-mini">
-                        <table class="mini-table">
-                            <thead>
-                                <tr>
-                                    <th width="70">Part STT</th>
-                                    <th>Kích thước Part</th>
-                                    <th>Telegram File ID</th>
-                                </tr>
-                            </thead>
-                            <tbody class="part-table-body">
-                                </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-        </main>
+    <!-- ★ MÀNG ĐEN MỜ CHO MOBILE DRAWER (JS sẽ điều khiển) -->
+    <div class="drawer-overlay" id="sidebar-overlay"></div>
+
+</main>
     </section>
 
     <div class="mini-progress-panel" id="download-manager-panel" style="display: none;">
