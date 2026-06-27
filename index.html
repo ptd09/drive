@@ -2,7 +2,11 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#05050a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>TG-Drive Pro — Hệ thống lưu trữ đám mây tối thượng</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,13 +15,6 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="app-container">
-
-    
-    <!-- ★ RESPONSIVE ADDITIONS — Hamburger + Sidebar overlay (NOT replacing anything) -->
-    <button class="hamburger-btn" id="hamburger-btn" aria-label="Mở menu" style="display:none;">
-        <i class="fa-solid fa-bars"></i>
-    </button>
-    <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
     <div class="background-glow">
         <div class="blob blob-1"></div>
@@ -62,7 +59,7 @@
                 <input type="file" id="file-input" multiple style="display: none;">
             </div>
 
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav touch-scroll">
                 <button class="nav-item active" data-tab="my-drive">
                     <i class="fa-solid fa-hard-drive"></i>
                     <span>Bộ nhớ của tôi</span>
@@ -121,10 +118,7 @@
                 </div>
             </header>
 
-            <!-- ★ Drop-zone wrapper around stats-banner -->
-            <div class="stats-dropzone-wrapper" id="stats-dropzone-wrapper">
-                <div class="dropzone-hint" id="dropzone-hint" style="display:none;"><i class="fa-solid fa-cloud-arrow-up"></i> Thả tệp để tải lên ngay</div>
-                <section class="stats-banner">
+            <section class="stats-banner">
                 <div class="mini-stat-card">
                     <div class="card-icon blue"><i class="fa-solid fa-file-shield"></i></div>
                     <div class="card-info">
@@ -147,7 +141,6 @@
                     </div>
                 </div>
             </section>
-            </div>
 
             <div class="action-toolbar">
                 <div class="toolbar-left">
@@ -190,10 +183,9 @@
                 </div>
             </div>
 
-            <div class="file-list-center-wrapper">
-            <div class="data-view-scroller">
+            <div class="data-view-scroller" id="data-view-scroller" role="main" aria-label="Danh sách tệp tin">
                 
-                <div id="file-list-view" class="file-list-view-container">
+                <div id="file-list-view" class="file-list-view-container table-mobile-wrap">
                     <table class="modern-table">
                         <thead>
                             <tr>
@@ -223,7 +215,6 @@
                     <p>Hãy kéo thả tệp vào đây hoặc bấm nút "Tải lên mới" để bắt đầu lưu trữ.</p>
                 </div>
             </div>
-            </div><!-- /.file-list-center-wrapper -->
 
             <section id="internal-logs-section" class="internal-logs-panel" style="display: none;">
                 <div class="panel-header">
