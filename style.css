@@ -1345,3 +1345,383 @@ body {
         padding-top: max(20px, env(safe-area-inset-top));
     }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   ★★★ GOOGLE-DRIVE LAYOUT REFACTOR — APPEND ONLY (OVERRIDE) ★★★
+   Phase 1 & 2: Layout chuẩn GDrive + Sidebar Hover-Expand
+   Không xóa gì phía trên. Tất cả ghi đè bằng độ ưu tiên cao hơn.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── A. MAIN WORKSPACE: chuyển sang flex dọc, nền trong suốt ── */
+.main-workspace {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    gap: clamp(10px, 1.5vw, 18px);
+    padding: 0;
+}
+
+/* ── B. KHỐI TRÊN CÙNG: HEADER + STATS WRAPPER ── */
+.header-stats-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 1.5vw, 16px);
+    flex-shrink: 0;
+    background: var(--bg-glass);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+    overflow: hidden;
+}
+
+/* Header bên trong wrapper: bỏ border-bottom cứng để liền mạch */
+.header-stats-wrapper .top-header {
+    border-bottom: 1px solid var(--border-light);
+}
+
+/* ── C. HÀNG NGANG: STATS + DROP-ZONE ── */
+.stats-dropzone-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(260px, 32%, 420px);
+    gap: clamp(12px, 2vw, 20px);
+    padding: clamp(12px, 2vw, 20px);
+    align-items: stretch;
+}
+
+/* stats-banner reset border vì đã nằm trong wrapper */
+.header-stats-wrapper .stats-banner {
+    border-bottom: none;
+    padding: 0;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: clamp(10px, 1.5vw, 16px);
+}
+
+/* ── D. DROP ZONE KHỔNG LỒ (viền nét đứt) ── */
+.drop-zone-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: 2px dashed rgba(139, 92, 246, 0.45);
+    border-radius: var(--radius-lg);
+    background: rgba(139, 92, 246, 0.04);
+    cursor: pointer;
+    transition: var(--trans-smooth);
+    min-height: 120px;
+    padding: clamp(14px, 2vw, 22px);
+    position: relative;
+    overflow: hidden;
+}
+.drop-zone-area::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 0%, rgba(139,92,246,0.12), transparent 70%);
+    opacity: 0; transition: opacity .3s ease;
+}
+.drop-zone-area:hover,
+.drop-zone-area.drag-over {
+    border-color: var(--accent-violet);
+    background: rgba(139, 92, 246, 0.12);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(139, 92, 246, 0.25);
+}
+.drop-zone-area:hover::before,
+.drop-zone-area.drag-over::before { opacity: 1; }
+.drop-zone-area.drag-over { animation: dropPulse 1.2s ease-in-out infinite; }
+@keyframes dropPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.4); }
+    50%     { box-shadow: 0 0 0 10px rgba(139,92,246,0); }
+}
+.drop-zone-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.drop-zone-icon  { font-size: clamp(28px, 4vw, 40px); color: var(--accent-violet); filter: drop-shadow(0 0 10px rgba(139,92,246,0.5)); }
+.drop-zone-title { font-weight: 700; font-size: var(--fs-sm); color: #fff; }
+.drop-zone-sub   { font-size: var(--fs-xs); color: var(--text-muted); }
+
+/* ── E. KHỐI CHÍNH GIỮA: FILE-LIST-CENTER (căn giữa + shadow nổi) ── */
+.file-list-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    min-height: 0;                 /* cho phép flex con scroll */
+    background: var(--bg-glass-heavy);
+    backdrop-filter: blur(18px) saturate(170%);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.45), 0 0 24px rgba(139,92,246,0.12), inset 0 1px 0 rgba(255,255,255,0.05);
+    overflow: hidden;
+}
+
+/* action-toolbar nằm trong center: header cố định */
+.file-list-center .action-toolbar {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-light);
+    background: rgba(255,255,255,0.02);
+}
+
+/* scroller chiếm phần còn lại + scroll mượt */
+.file-list-center .data-view-scroller {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* ── F. SIDEBAR HOVER-EXPAND (PC > 768px) ─────────────────────
+   Mặc định 76px chỉ hiện icon, hover giãn ra 260px, transform 60fps  */
+@media (min-width: 769px) {
+    .sidebar {
+        width: 76px;
+        overflow: hidden;
+        transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: width;
+    }
+    .sidebar:hover {
+        width: 260px;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+    }
+
+    /* Ẩn text khi thu gọn, hiện khi hover */
+    .sidebar .brand-text,
+    .sidebar .nav-item span,
+    .sidebar .btn-upload-trigger span,
+    .sidebar .storage-card {
+        opacity: 0;
+        white-space: nowrap;
+        transition: opacity 0.2s ease;
+        pointer-events: none;
+    }
+    .sidebar:hover .brand-text,
+    .sidebar:hover .nav-item span,
+    .sidebar:hover .btn-upload-trigger span,
+    .sidebar:hover .storage-card {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Căn giữa icon khi thu gọn */
+    .sidebar .nav-item { justify-content: flex-start; padding-left: 18px; }
+    .sidebar .sidebar-brand { padding-left: 14px; }
+    .sidebar .btn-upload-trigger { padding-left: 0; padding-right: 0; }
+    .sidebar:hover .btn-upload-trigger { padding: 14px; }
+
+    /* storage-card khi thu gọn không chiếm chỗ */
+    .sidebar .storage-card { max-height: 0; padding: 0; margin: 0; border: none; overflow: hidden; transition: max-height .3s ease, opacity .2s ease; }
+    .sidebar:hover .storage-card { max-height: 220px; padding: 16px; margin-top: auto; border: 1px solid var(--border-light); }
+}
+
+/* ── G. STATS-DROPZONE-ROW responsive: dồn dọc trên tablet ── */
+@media (max-width: 1100px) {
+    .stats-dropzone-row { grid-template-columns: 1fr; }
+    .drop-zone-area { min-height: 90px; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Phase 3 (mobile drawer) sẽ append tiếp ở phản hồi sau.
+   ══════════════════════════════════════════════════════════════ */
+   /* ══════════════════════════════════════════════════════════════
+   ★★★ PHASE 3 — MOBILE DRAWER + FAB + TOUCH UX (APPEND ONLY) ★★★
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 1. DRAWER OVERLAY (màng đen mờ) ── */
+.drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    z-index: 800;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.drawer-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ── 2. FLOATING ACTION BUTTON (tạo động bằng JS) ── */
+#mobile-fab-menu {
+    position: fixed;
+    right: clamp(16px, 5vw, 24px);
+    bottom: clamp(16px, 5vh, 28px);
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: var(--grad-primary);
+    color: #fff;
+    font-size: 22px;
+    display: none;                 /* JS bật khi <=768px */
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 850;
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.5);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    will-change: transform;
+}
+#mobile-fab-menu:hover { transform: scale(1.08); }
+#mobile-fab-menu:active { transform: scale(0.92); }
+#mobile-fab-menu.fab-rotate { transform: rotate(90deg) scale(1.05); }
+
+/* Safe-area cho iPhone notch/home bar */
+@supports (padding: max(0px)) {
+    #mobile-fab-menu {
+        bottom: max(clamp(16px,5vh,28px), env(safe-area-inset-bottom));
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BREAKPOINT MOBILE (<= 768px): SIDEBAR OFF-CANVAS DRAWER
+   Ghi đè breakpoint 900px/600px cũ bằng độ ưu tiên cao hơn.
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+    /* FAB hiện ra */
+    #mobile-fab-menu { display: flex; }
+
+    /* Layout về dọc, body cho scroll */
+    body { overflow: auto; }
+    .dashboard-layout {
+        flex-direction: column;
+        padding: clamp(6px, 2vw, 10px);
+        gap: clamp(6px, 2vw, 10px);
+        height: auto;
+        min-height: 100dvh;
+    }
+
+    /* ── SIDEBAR: trượt ra ngoài màn hình (-100%) ── */
+    .sidebar {
+        position: fixed !important;
+        top: 0;
+        left: -100%;
+        bottom: 0;
+        width: min(280px, 82vw) !important;
+        height: 100dvh !important;
+        flex-direction: column !important;
+        flex-wrap: nowrap !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        z-index: 900;
+        border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+        padding: clamp(16px, 4vw, 22px) clamp(12px, 3vw, 18px);
+        transition: left 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+        box-shadow: 12px 0 40px rgba(0,0,0,0.6);
+        will-change: left;
+    }
+
+    /* Trạng thái mở drawer */
+    .sidebar.drawer-open { left: 0; }
+
+    /* Trong drawer: hiển thị đầy đủ text (ghi đè hover-collapse PC) */
+    .sidebar .brand-text,
+    .sidebar .nav-item span,
+    .sidebar .btn-upload-trigger span {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        display: inline !important;
+    }
+    .sidebar-brand { display: flex !important; margin-bottom: 24px; font-size: 22px; }
+    .sidebar-nav {
+        flex-direction: column !important;
+        flex: 0 0 auto;
+        overflow: visible !important;
+        gap: 6px;
+    }
+    .nav-item {
+        flex-direction: row !important;
+        justify-content: flex-start !important;
+        padding: 14px 16px !important;
+        font-size: 15px !important;
+        min-width: 0 !important;
+        text-align: left !important;
+    }
+    .nav-item.active {
+        border-left: 4px solid var(--accent-violet) !important;
+        border-bottom: none !important;
+    }
+    .storage-card {
+        display: block !important;
+        max-height: none !important;
+        opacity: 1 !important;
+        padding: 16px !important;
+        margin-top: auto !important;
+        border: 1px solid var(--border-light) !important;
+    }
+    .upload-action-wrapper { margin-bottom: 22px !important; }
+    .btn-upload-trigger {
+        padding: 14px !important;
+        font-size: 15px !important;
+        width: 100% !important;
+    }
+    .btn-upload-trigger::after { content: none !important; }  /* hủy nút "+" cũ */
+    .btn-upload-trigger span { display: inline !important; }
+
+    /* ── DROP ZONE ẩn trên mobile (dùng FAB + nút Upload thay) ── */
+    .stats-dropzone-row { grid-template-columns: 1fr; }
+    .drop-zone-area { display: none; }
+
+    /* ── FILE-LIST-CENTER full width ── */
+    .file-list-center {
+        max-width: 100%;
+        margin: 0;
+        border-radius: var(--radius-md);
+    }
+
+    /* ── DATA SCROLLER: vuốt siêu mượt ── */
+    .data-view-scroller {
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior-y: contain;
+        padding: 0 clamp(8px, 3vw, 14px) clamp(12px, 3vw, 18px);
+    }
+
+    /* Action toolbar gọn lại */
+    .action-toolbar { flex-direction: column; align-items: stretch; gap: clamp(8px,2vw,12px); }
+    .toolbar-left, .toolbar-right { width: 100%; flex-wrap: wrap; }
+
+    /* Header dọc, fluid */
+    .top-header {
+        flex-direction: column;
+        height: auto;
+        gap: 10px;
+        align-items: stretch;
+        padding: clamp(10px,3vw,14px);
+    }
+    .search-container { max-width: 100%; }
+    .system-status, .username { display: none; }
+
+    /* Ẩn cột Kích thước + Ngày để bảng gọn */
+    .modern-table th:nth-child(4),
+    .modern-table td:nth-child(4),
+    .modern-table th:nth-child(5),
+    .modern-table td:nth-child(5) { display: none; }
+    .file-name-text { max-width: min(58vw, 280px); }
+}
+
+/* ── MOBILE NHỎ (<= 480px): tinh chỉnh thêm ── */
+@media (max-width: 480px) {
+    .stats-banner { grid-template-columns: 1fr 1fr; }
+    .file-grid-view-container,
+    #file-grid-view { grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
+    #mobile-fab-menu { width: 52px; height: 52px; font-size: 20px; }
+}
+
+/* ── PC (>768px): đảm bảo FAB + overlay luôn ẩn ── */
+@media (min-width: 769px) {
+    #mobile-fab-menu { display: none !important; }
+    .drawer-overlay { display: none !important; }
+}
+
+/* Reduced motion: tắt animation drawer/fab */
+@media (prefers-reduced-motion: reduce) {
+    .sidebar, .drawer-overlay, #mobile-fab-menu { transition: none !important; }
+}
