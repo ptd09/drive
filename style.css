@@ -726,3 +726,446 @@ body {
     from { opacity: 0; transform: translateX(-20px); }
     to   { opacity: 1; transform: translateX(0); }
 }
+
+/* ====================================================================
+   ★ RESPONSIVE UPGRADE — TG-DRIVE PRO v5
+   Appended below original CSS. Original rules are NOT modified.
+   ==================================================================== */
+
+/* ── CSS Custom Properties (extra) ──────────────────────────────── */
+:root {
+    --sidebar-collapsed-w : 64px;
+    --sidebar-expanded-w  : 260px;
+    --sidebar-transition  : width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                            transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    --header-block-h      : auto;
+    --filelist-max-w      : 1080px;
+    --dropzone-active-bg  : rgba(139, 92, 246, 0.12);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   HAMBURGER BUTTON  (hidden on desktop, shown on mobile)
+───────────────────────────────────────────────────────────────── */
+.hamburger-btn {
+    position  : fixed;
+    top       : 14px;
+    left      : 14px;
+    z-index   : 1200;
+    width     : 42px;
+    height    : 42px;
+    border    : none;
+    border-radius : 50%;
+    background: rgba(139, 92, 246, 0.85);
+    color     : #fff;
+    font-size : 17px;
+    cursor    : pointer;
+    display   : flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.5);
+    backdrop-filter: blur(10px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hamburger-btn:hover { transform: scale(1.08); box-shadow: 0 6px 22px rgba(139,92,246,0.7); }
+
+/* ─────────────────────────────────────────────────────────────────
+   SIDEBAR OVERLAY  (dark scrim behind open drawer on mobile)
+───────────────────────────────────────────────────────────────── */
+.sidebar-overlay {
+    display  : none;
+    position : fixed;
+    inset    : 0;
+    z-index  : 1050;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    animation: fadeInOverlay 0.25s ease;
+}
+.sidebar-overlay.active { display: block; }
+@keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
+
+/* ─────────────────────────────────────────────────────────────────
+   SIDEBAR — ICON-ONLY BY DEFAULT ON DESKTOP (hover to expand)
+───────────────────────────────────────────────────────────────── */
+@media (min-width: 901px) {
+    /* Dashboard root flex — compensate for collapsing sidebar */
+    .dashboard-layout {
+        padding     : 12px;
+        gap         : 12px;
+        overflow    : hidden;
+        height      : 100vh;
+    }
+
+    /* ── Sidebar base: icon-only (collapsed) ── */
+    .sidebar {
+        width           : var(--sidebar-collapsed-w);
+        min-width       : var(--sidebar-collapsed-w);
+        transition      : var(--sidebar-transition);
+        overflow        : hidden;
+        flex-shrink     : 0;
+        z-index         : 100;
+        position        : relative;
+    }
+    /* Expand on hover */
+    .sidebar:hover {
+        width    : var(--sidebar-expanded-w);
+        min-width: var(--sidebar-expanded-w);
+    }
+
+    /* ── Brand: always show icon, hide text when collapsed ── */
+    .sidebar-brand .brand-text {
+        opacity          : 0;
+        width            : 0;
+        overflow         : hidden;
+        white-space      : nowrap;
+        transition       : opacity 0.22s ease, width 0.22s ease;
+    }
+    .sidebar:hover .sidebar-brand .brand-text {
+        opacity : 1;
+        width   : auto;
+    }
+
+    /* ── Upload button: shrink to circle icon when collapsed ── */
+    .btn-upload-trigger span {
+        opacity    : 0;
+        width      : 0;
+        overflow   : hidden;
+        white-space: nowrap;
+        transition : opacity 0.2s ease, width 0.2s ease;
+    }
+    .sidebar:hover .btn-upload-trigger span {
+        opacity : 1;
+        width   : auto;
+    }
+    .btn-upload-trigger {
+        padding         : 12px;
+        justify-content : center;
+        min-width       : 0;
+        transition      : padding 0.22s ease, var(--trans-bouncy);
+    }
+    .sidebar:hover .btn-upload-trigger {
+        padding : 14px;
+    }
+
+    /* ── Nav items: hide label text when collapsed ── */
+    .nav-item span {
+        opacity    : 0;
+        width      : 0;
+        overflow   : hidden;
+        white-space: nowrap;
+        transition : opacity 0.2s ease, width 0.2s ease;
+    }
+    .sidebar:hover .nav-item span {
+        opacity : 1;
+        width   : auto;
+    }
+    .nav-item {
+        padding         : 12px;
+        justify-content : center;
+        transition      : padding 0.22s ease, background 0.2s ease, color 0.2s ease;
+    }
+    .sidebar:hover .nav-item {
+        padding         : 12px 16px;
+        justify-content : flex-start;
+    }
+    /* left-border active indicator still works */
+    .nav-item.active {
+        border-left : 4px solid var(--accent-violet);
+    }
+
+    /* ── Storage card: hidden when collapsed ── */
+    .storage-card {
+        opacity        : 0;
+        max-height     : 0;
+        overflow       : hidden;
+        padding        : 0;
+        margin         : 0;
+        transition     : opacity 0.25s ease, max-height 0.3s ease, padding 0.25s ease;
+    }
+    .sidebar:hover .storage-card {
+        opacity    : 1;
+        max-height : 160px;
+        padding    : 16px;
+        margin-top : auto;
+    }
+
+    /* ── Main workspace fills remaining space ── */
+    .main-workspace {
+        flex           : 1;
+        min-width      : 0;
+        overflow       : hidden;
+        display        : flex;
+        flex-direction : column;
+    }
+
+    /* Hamburger hidden on desktop */
+    .hamburger-btn { display: none !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   HEADER BLOCK — search + stats pinned at top, NOT scrolling
+───────────────────────────────────────────────────────────────── */
+@media (min-width: 901px) {
+    .top-header {
+        flex-shrink : 0;  /* never compress */
+        height      : 70px;
+    }
+
+    /* Stats banner = drop zone — distinct section, not scrolling */
+    .stats-dropzone-wrapper {
+        flex-shrink     : 0;
+        position        : relative;
+        padding         : 0 24px;
+        border-bottom   : 1px solid rgba(255,255,255,0.06);
+        transition      : background 0.25s ease;
+    }
+    .stats-dropzone-wrapper.drag-over {
+        background      : var(--dropzone-active-bg);
+        border-color    : rgba(139, 92, 246, 0.4);
+    }
+    .stats-banner {
+        border-bottom   : none;   /* remove original bottom border — wrapper has it */
+        padding-bottom  : 20px;
+    }
+
+    /* File list center-wrapper: takes all remaining vertical space, scrolls */
+    .file-list-center-wrapper {
+        flex          : 1;
+        min-height    : 0;
+        overflow      : hidden;
+        display       : flex;
+        flex-direction: column;
+    }
+
+    /* data-view-scroller: the only scrollable region */
+    .data-view-scroller {
+        flex                      : 1;
+        min-height                : 0;
+        overflow-y                : auto;
+        -webkit-overflow-scrolling: touch;
+        /* Center content */
+        padding                   : 0 24px 24px;
+    }
+
+    /* Centered file list container */
+    .file-list-view-container,
+    .file-grid-view-container {
+        max-width    : var(--filelist-max-w);
+        margin       : 16px auto 0;
+    }
+
+    /* Action toolbar pinned above the scroll region */
+    .action-toolbar {
+        flex-shrink  : 0;
+        padding      : 12px 24px;
+        max-width    : var(--filelist-max-w);
+        margin       : 0 auto;
+        width        : 100%;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   DROP-ZONE HINT TEXT
+───────────────────────────────────────────────────────────────── */
+.dropzone-hint {
+    position      : absolute;
+    inset         : 0;
+    display       : flex;
+    align-items   : center;
+    justify-content: center;
+    gap           : 12px;
+    font-size     : 18px;
+    font-weight   : 700;
+    color         : var(--accent-violet);
+    background    : rgba(139, 92, 246, 0.08);
+    border        : 2px dashed rgba(139, 92, 246, 0.5);
+    border-radius : 16px;
+    z-index       : 10;
+    pointer-events: none;
+    animation     : pulseBorder 1.5s ease-in-out infinite;
+}
+@keyframes pulseBorder {
+    0%, 100% { border-color: rgba(139, 92, 246, 0.4); }
+    50%       { border-color: rgba(139, 92, 246, 0.85); }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   MOBILE / TABLET (≤ 900px) — Off-canvas drawer sidebar
+───────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+    /* Body: allow scroll */
+    body { overflow: auto; height: auto; }
+
+    .dashboard-layout {
+        flex-direction : column;
+        height         : auto;
+        min-height     : 100vh;
+        padding        : 0;
+        gap            : 0;
+    }
+
+    /* ── Sidebar: hidden off-canvas left ── */
+    .sidebar {
+        position        : fixed;
+        top             : 0;
+        left            : 0;
+        height          : 100vh;
+        width           : 280px;
+        z-index         : 1100;
+        transform       : translateX(-100%);
+        transition      : transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius   : 0 var(--radius-lg) var(--radius-lg) 0;
+        padding         : 20px 16px;
+        overflow-y      : auto;
+        /* Keep original glass bg */
+        background      : rgba(11, 15, 25, 0.97);
+        backdrop-filter : blur(24px);
+    }
+    .sidebar.drawer-open {
+        transform : translateX(0);
+        box-shadow: 8px 0 40px rgba(0, 0, 0, 0.7);
+    }
+    /* Sidebar brand always fully visible in drawer */
+    .sidebar-brand .brand-text { opacity: 1 !important; width: auto !important; }
+    .btn-upload-trigger span    { opacity: 1 !important; width: auto !important; }
+    .nav-item span              { opacity: 1 !important; width: auto !important; }
+    .nav-item { padding: 12px 16px !important; justify-content: flex-start !important; }
+    .storage-card { opacity: 1 !important; max-height: 200px !important; padding: 16px !important; margin-top: 24px !important; }
+
+    /* ── Hamburger: always visible on mobile ── */
+    .hamburger-btn { display: flex !important; }
+
+    /* ── Main workspace: full-width column ── */
+    .main-workspace {
+        flex           : none;
+        width          : 100%;
+        height         : auto;
+        border-radius  : 0;
+        overflow       : visible;
+    }
+
+    /* ── Top header: compact ── */
+    .top-header {
+        padding         : 12px 16px 12px 68px; /* left-pad for hamburger */
+        height          : auto;
+        flex-wrap       : wrap;
+        gap             : 10px;
+    }
+    .search-container { max-width: 100%; width: 100%; }
+    .header-right-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+    .system-status { display: none; } /* hide on very small screens */
+
+    /* ── Stats banner + dropzone wrapper ── */
+    .stats-dropzone-wrapper { padding: 0 12px; }
+    .stats-banner {
+        grid-template-columns : 1fr;
+        padding               : 12px 0;
+        gap                   : 10px;
+    }
+    .mini-stat-card { padding: 12px; }
+
+    /* ── Action toolbar ── */
+    .action-toolbar {
+        flex-direction  : column;
+        align-items     : flex-start;
+        padding         : 12px 16px;
+        gap             : 10px;
+    }
+    .toolbar-right {
+        flex-wrap : wrap;
+        gap       : 8px;
+        width     : 100%;
+    }
+
+    /* ── File list center wrapper ── */
+    .file-list-center-wrapper {
+        overflow    : visible;
+        min-height  : 0;
+    }
+
+    /* ── Data scroller: smooth touch scroll ── */
+    .data-view-scroller {
+        overflow-y                : auto;
+        -webkit-overflow-scrolling: touch;
+        padding                   : 0 12px 100px; /* bottom pad for floating panel */
+        max-height                : none;
+    }
+
+    /* ── Table: hide size/date columns on phones ── */
+    .modern-table th:nth-child(4),
+    .modern-table td:nth-child(4),
+    .modern-table th:nth-child(5),
+    .modern-table td:nth-child(5) {
+        display : none;
+    }
+    .modern-table th:nth-child(2),
+    .modern-table td:nth-child(2) {
+        display : none; /* hide STT column */
+    }
+    .file-name-text { max-width: 200px; }
+
+    /* ── Grid view: 2-column on tablet, 1-column on small phone ── */
+    .file-grid-view-container,
+    #file-grid-view {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 10px;
+    }
+
+    /* ── Mini progress panel: full-width bottom ── */
+    .mini-progress-panel {
+        width  : calc(100vw - 24px);
+        right  : 12px;
+        bottom : 12px;
+        left   : 12px;
+    }
+
+    /* ── Modal: 95% wide, touch-friendly buttons ── */
+    .modal-content-wrapper {
+        width     : 95%;
+        max-height: 92vh;
+    }
+    .close-modal-btn { width: 44px; height: 44px; font-size: 22px; }
+
+    /* ── Details drawer ── */
+    .file-details-drawer {
+        margin : 0 12px 12px;
+    }
+}
+
+/* Very small phones (≤ 420px) */
+@media (max-width: 420px) {
+    #file-grid-view,
+    .file-grid-view-container {
+        grid-template-columns: 1fr;
+    }
+    .btn-sm { padding: 8px 10px; font-size: 12px; }
+    .username { display: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   SMOOTH SCROLLBAR for the file list
+───────────────────────────────────────────────────────────────── */
+.data-view-scroller {
+    scroll-behavior               : smooth;
+    -webkit-overflow-scrolling    : touch;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   TABLE RESPONSIVENESS (tablet intermediate)
+───────────────────────────────────────────────────────────────── */
+@media (max-width: 700px) and (min-width: 421px) {
+    .modern-table th:nth-child(5),
+    .modern-table td:nth-child(5) { display: none; }
+    .file-name-text { max-width: 220px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   DRAG-OVER visual for the whole workspace on mobile
+───────────────────────────────────────────────────────────────── */
+.stats-dropzone-wrapper.drag-over .stats-banner {
+    opacity : 0.3;
+    filter  : blur(2px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, filter 0.2s ease;
+}
