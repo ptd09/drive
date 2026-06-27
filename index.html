@@ -12,6 +12,13 @@
 </head>
 <body class="app-container">
 
+    
+    <!-- ★ RESPONSIVE ADDITIONS — Hamburger + Sidebar overlay (NOT replacing anything) -->
+    <button class="hamburger-btn" id="hamburger-btn" aria-label="Mở menu" style="display:none;">
+        <i class="fa-solid fa-bars"></i>
+    </button>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
     <div class="background-glow">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
@@ -114,7 +121,10 @@
                 </div>
             </header>
 
-            <section class="stats-banner">
+            <!-- ★ Drop-zone wrapper around stats-banner -->
+            <div class="stats-dropzone-wrapper" id="stats-dropzone-wrapper">
+                <div class="dropzone-hint" id="dropzone-hint" style="display:none;"><i class="fa-solid fa-cloud-arrow-up"></i> Thả tệp để tải lên ngay</div>
+                <section class="stats-banner">
                 <div class="mini-stat-card">
                     <div class="card-icon blue"><i class="fa-solid fa-file-shield"></i></div>
                     <div class="card-info">
@@ -137,6 +147,7 @@
                     </div>
                 </div>
             </section>
+            </div>
 
             <div class="action-toolbar">
                 <div class="toolbar-left">
@@ -179,6 +190,7 @@
                 </div>
             </div>
 
+            <div class="file-list-center-wrapper">
             <div class="data-view-scroller">
                 
                 <div id="file-list-view" class="file-list-view-container">
@@ -211,6 +223,7 @@
                     <p>Hãy kéo thả tệp vào đây hoặc bấm nút "Tải lên mới" để bắt đầu lưu trữ.</p>
                 </div>
             </div>
+            </div><!-- /.file-list-center-wrapper -->
 
             <section id="internal-logs-section" class="internal-logs-panel" style="display: none;">
                 <div class="panel-header">
