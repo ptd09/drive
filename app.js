@@ -1435,3 +1435,393 @@ if (btnProcessCancel) {
 
     syncBreakpoint();
 })();
+
+/* ====================================================================
+   ★ PHASE 4 — PROGRESSIVE RANGE STREAMING ENGINE
+   Appended below original app.js. ZERO deletions.
+
+   Luồng hoạt động:
+   1. previewFile(id) được override:
+      - Fetch metadata từ Worker API
+      - Lưu { id, parts, totalSize, mimeType, apiBase } vào IDB store "stream_meta"
+      - Đợi SW ready, rồi gán src = "/api/stream?id=<id>&auth=<token>"
+      - <video>/<audio> tự gửi Range request → SW phục vụ
+   2. Hàm cũ previewFile bị giữ nguyên nhưng bị override ở scope global
+   ====================================================================*/
+
+// ─── IDB helpers riêng cho stream_meta (tránh dùng db có thể chưa ready) ─────
+const STREAM_META_STORE = "stream_meta";
+const STREAM_DB_VERSION = 2; // khớp sw.js
+
+function openStreamMetaDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open("tgdrive_db", STREAM_DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains("upload_progress")) {
+                db.createObjectStore("upload_progress", { keyPath: "sessionKey" });
+            }
+            if (!db.objectStoreNames.contains(STREAM_META_STORE)) {
+                db.createObjectStore(STREAM_META_STORE, { keyPath: "id" });
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+        setTimeout(() => reject(new Error("IDB stream open timeout")), 5000);
+    });
+}
+
+function streamMetaPut(db, value) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STREAM_META_STORE, "readwrite");
+        tx.objectStore(STREAM_META_STORE).put(value);
+        tx.oncomplete = () => resolve();
+        tx.onerror    = () => reject(tx.error);
+    });
+}
+
+// ─── SW ready check ────────────────────────────────────────────────────────────
+async function waitForSW() {
+    if (!("serviceWorker" in navigator)) return false;
+    const reg = await navigator.serviceWorker.ready.catch(() => null);
+    return !!reg;
+}
+
+// ─── File-type helpers for Phase-4 ────────────────────────────────────────────
+const P4_STREAMABLE_VIDEO = ["mp4", "webm", "ogg", "mov", "mkv", "avi", "m4v"];
+const P4_STREAMABLE_AUDIO = ["mp3", "wav", "m4a", "aac", "flac", "ogg"];
+const P4_TEXT_EXT = [
+    "txt", "md", "json", "js", "ts", "jsx", "tsx", "html", "htm",
+    "css", "py", "sh", "bash", "yml", "yaml", "xml", "csv", "log",
+    "ini", "conf", "env", "sql", "toml"
+];
+
+function p4GetExt(name) {
+    const dot = (name || "").lastIndexOf(".");
+    if (dot === -1) return "";
+    return name.slice(dot + 1).toLowerCase().split(".part")[0];
+}
+
+function p4GetMimeForStream(ext) {
+    const map = {
+        mp4:"video/mp4", webm:"video/webm", ogg:"video/ogg", mov:"video/mp4",
+        mkv:"video/mp4", avi:"video/mp4", m4v:"video/mp4",
+        mp3:"audio/mpeg", wav:"audio/wav", m4a:"audio/mp4", aac:"audio/aac",
+        flac:"audio/flac"
+    };
+    return map[ext] || "video/mp4";
+}
+
+// ─── TEXT PREVIEW helper ──────────────────────────────────────────────────────
+async function previewTextFile(url, fetchHeaders, fileNameForLang) {
+    const res  = await fetch(url, { headers: fetchHeaders });
+    if (!res.ok) throw new Error("Fetch text failed: " + res.status);
+    const text = await res.text();
+
+    const ext  = p4GetExt(fileNameForLang);
+    const langMap = {
+        js:"javascript", ts:"javascript", jsx:"javascript", tsx:"javascript",
+        json:"json", html:"html", htm:"html", css:"css", py:"python",
+        sh:"bash", bash:"bash", yml:"yaml", yaml:"yaml", xml:"xml",
+        sql:"sql", md:"markdown"
+    };
+    const lang = langMap[ext] || "";
+
+    // Escape HTML
+    const escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+    return `<pre style="
+        width:100%; max-height:70vh; overflow:auto;
+        background:#0a0f1e; color:#a5f3fc;
+        padding:16px; border-radius:10px;
+        font-family:'JetBrains Mono','Fira Code',monospace; font-size:13px;
+        line-height:1.6; text-align:left; white-space:pre-wrap; word-break:break-word;
+        border:1px solid rgba(139,92,246,0.2);"
+    ><code class="language-${lang}">${escaped}</code></pre>`;
+}
+
+// ─── OVERRIDE previewFile ─────────────────────────────────────────────────────
+// Ghi đè hàm previewFile cũ trong scope window — hàm cũ vẫn tồn tại nhưng
+// không được gọi nữa; logic cũ (single-part image/video/audio/pdf) được
+// tích hợp lại ở đây với fallback đầy đủ.
+//
+window._p4OrigPreviewFile = typeof previewFile !== "undefined" ? previewFile : null;
+
+async function previewFile(id) {
+    const modal = document.getElementById("preview-modal");
+    const title = document.getElementById("preview-title");
+    const body  = document.getElementById("preview-body");
+
+    if (!modal || !body || !title) return;
+
+    // Reset & show modal
+    title.textContent = "Đang nạp siêu dữ liệu...";
+    body.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:40px;color:var(--text-muted);">
+        <div style="width:40px;height:40px;border:3px solid rgba(139,92,246,0.4);border-top-color:#8b5cf6;
+             border-radius:50%;animation:spinLoad 0.9s linear infinite;"></div>
+        <span>Đang khởi tạo luồng phương tiện...</span>
+    </div>
+    <style>@keyframes spinLoad{to{transform:rotate(360deg)}}</style>`;
+    modal.style.display = "flex";
+
+    let file;
+    try {
+        const res = await fetch(API + "/file/" + id, {
+            headers: { Authorization: AUTH_HEADER }
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        file = await res.json();
+    } catch (err) {
+        body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">Lỗi lấy metadata: ${err.message}</p>`;
+        return;
+    }
+
+    title.textContent = file.name || "Xem trước";
+
+    const ext  = p4GetExt(file.name);
+    const parts = Array.isArray(file.parts) ? [...file.parts].sort((a,b) => a.index - b.index) : [];
+
+    if (parts.length === 0) {
+        body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">Tệp không có dữ liệu part.</p>`;
+        return;
+    }
+
+    // ── TEXT/CODE files (chỉ single-part để tránh OOM) ──────────────
+    if (P4_TEXT_EXT.includes(ext) && parts.length === 1) {
+        try {
+            const dlUrl    = API + "/download/" + parts[0].file_id;
+            body.innerHTML = await previewTextFile(dlUrl, { Authorization: AUTH_HEADER }, file.name);
+        } catch (err) {
+            body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">Lỗi đọc text: ${err.message}</p>`;
+        }
+        return;
+    }
+
+    // ── IMAGE (single-part, tải trực tiếp) ───────────────────────────
+    const isImage = ["jpg","jpeg","png","gif","webp","bmp","svg"].includes(ext);
+    if (isImage && parts.length === 1) {
+        try {
+            const blobRes = await fetch(API + "/download/" + parts[0].file_id,
+                { headers: { Authorization: AUTH_HEADER } });
+            const blob   = await blobRes.blob();
+            const objUrl = URL.createObjectURL(blob);
+            body.innerHTML = "";
+            const img = document.createElement("img");
+            img.src   = objUrl;
+            img.style.cssText = "max-width:100%;max-height:78vh;border-radius:8px;object-fit:contain;";
+            body.appendChild(img);
+        } catch (err) {
+            body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">Lỗi tải ảnh: ${err.message}</p>`;
+        }
+        return;
+    }
+
+    // ── PDF (single-part, tải trực tiếp) ─────────────────────────────
+    if (ext === "pdf" && parts.length === 1) {
+        try {
+            const blobRes = await fetch(API + "/download/" + parts[0].file_id,
+                { headers: { Authorization: AUTH_HEADER } });
+            const blob   = await blobRes.blob();
+            const pdfUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+            body.innerHTML = `<iframe src="${pdfUrl}" style="width:100%;height:72vh;border:none;border-radius:8px;"></iframe>`;
+        } catch (err) {
+            body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">Lỗi tải PDF: ${err.message}</p>`;
+        }
+        return;
+    }
+
+    // ── VIDEO / AUDIO — kích hoạt Service Worker Range Streaming ─────
+    const isVideo = P4_STREAMABLE_VIDEO.includes(ext);
+    const isAudio = P4_STREAMABLE_AUDIO.includes(ext);
+
+    if (!isVideo && !isAudio) {
+        body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">
+            Định dạng <strong>.${ext}</strong> không hỗ trợ xem trước trực tiếp.<br>
+            Vui lòng tải xuống để mở bằng ứng dụng ngoài.</p>`;
+        return;
+    }
+
+    // Tính totalSize từ metadata hoặc cộng dồn từ parts
+    const totalSize = Number(file.size || 0) ||
+        parts.reduce((s, p) => s + Number(p.size || 0), 0);
+
+    const mimeType = p4GetMimeForStream(ext);
+
+    // Kiểm tra SW khả dụng
+    const swReady = await waitForSW();
+
+    if (swReady && parts.length > 1) {
+        // Multi-part → dùng SW Range Streaming
+        await p4StreamViaServiceWorker({
+            id, file, parts, totalSize, mimeType, isVideo, body, title
+        });
+    } else if (parts.length === 1) {
+        // Single-part → tải blob trực tiếp (nhanh hơn)
+        await p4StreamSinglePartBlob({ part: parts[0], mimeType, isVideo, body, file });
+    } else {
+        // SW không có + multi-part → blob concatenation (bộ nhớ nhiều)
+        await p4StreamConcatBlob({ parts, mimeType, isVideo, body, file, totalSize });
+    }
+}
+
+// ─── SW streaming path ────────────────────────────────────────────────────────
+async function p4StreamViaServiceWorker({ id, file, parts, totalSize, mimeType, isVideo, body }) {
+    // Lưu metadata vào IDB để SW đọc
+    try {
+        const idb = await openStreamMetaDB();
+        await streamMetaPut(idb, {
+            id,
+            parts: parts.map(p => ({
+                index  : p.index,
+                file_id: p.file_id,
+                size   : Number(p.size || 0)
+            })),
+            totalSize,
+            mimeType,
+            apiBase: API   // Worker URL
+        });
+    } catch (err) {
+        // IDB write failed → fallback
+        console.warn("[P4] IDB write failed, fallback to concat:", err);
+        await p4StreamConcatBlob({ parts, mimeType, isVideo, body, file, totalSize });
+        return;
+    }
+
+    const streamUrl = `/api/stream?id=${encodeURIComponent(id)}&auth=${encodeURIComponent(AUTH_HEADER)}&t=${Date.now()}`;
+
+    body.innerHTML = "";
+
+    const statusEl = document.createElement("div");
+    statusEl.style.cssText = "font-size:12px;color:var(--text-muted);text-align:center;padding:4px 0 10px;";
+    statusEl.textContent = `⚡ SW Range Streaming • ${parts.length} parts • ${_p4FmtSize(totalSize)}`;
+    body.appendChild(statusEl);
+
+    const tag  = isVideo ? "video" : "audio";
+    const el   = document.createElement(tag);
+    el.controls    = true;
+    el.autoplay    = true;
+    el.playsInline = true;
+    el.style.cssText = "width:100%;max-height:72vh;border-radius:10px;display:block;";
+
+    body.appendChild(el);
+
+    // Gán src SAU khi element nằm trong DOM
+    el.src = streamUrl;
+
+    el.addEventListener("error", async (ev) => {
+        console.warn("[P4] SW stream error, fallback:", ev);
+        statusEl.textContent = "⚠ SW lỗi, chuyển sang tải trực tiếp...";
+        await p4StreamConcatBlob({ parts, mimeType, isVideo, body, file, totalSize });
+    }, { once: true });
+}
+
+// ─── Single-part blob path ────────────────────────────────────────────────────
+async function p4StreamSinglePartBlob({ part, mimeType, isVideo, body, file }) {
+    try {
+        const res  = await fetch(API + "/download/" + part.file_id,
+            { headers: { Authorization: AUTH_HEADER } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const blob   = await res.blob();
+        const objUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+
+        body.innerHTML = "";
+        const tag  = isVideo ? "video" : "audio";
+        const el   = document.createElement(tag);
+        el.controls    = true;
+        el.autoplay    = true;
+        el.playsInline = true;
+        el.src         = objUrl;
+        el.style.cssText = "width:100%;max-height:72vh;border-radius:10px;display:block;";
+        body.appendChild(el);
+    } catch (err) {
+        body.innerHTML = `<p style="color:var(--text-muted);padding:24px;">Lỗi tải media: ${err.message}</p>`;
+    }
+}
+
+// ─── Multi-part concat blob (fallback, memory-intensive) ─────────────────────
+async function p4StreamConcatBlob({ parts, mimeType, isVideo, body, file, totalSize }) {
+    body.innerHTML = "";
+
+    const tag   = isVideo ? "video" : "audio";
+    const el    = document.createElement(tag);
+    el.controls    = true;
+    el.playsInline = true;
+    el.style.cssText = "width:100%;max-height:72vh;border-radius:10px;display:block;";
+
+    const progWrap = document.createElement("div");
+    progWrap.style.cssText = "margin-bottom:10px;";
+    progWrap.innerHTML = `
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;" id="p4-dl-status">
+            Đang tải part 1/${parts.length}...
+        </div>
+        <div style="height:6px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;">
+            <div id="p4-dl-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#8b5cf6,#6366f1);
+                 border-radius:99px;transition:width 0.3s ease;"></div>
+        </div>`;
+    body.appendChild(progWrap);
+    body.appendChild(el);
+
+    const statusEl = document.getElementById("p4-dl-status");
+    const barEl    = document.getElementById("p4-dl-bar");
+
+    const blobs = [];
+    try {
+        for (let i = 0; i < parts.length; i++) {
+            const p = parts[i];
+            if (statusEl) statusEl.textContent = `Đang tải part ${i+1}/${parts.length}...`;
+
+            const res = await fetch(API + "/download/" + p.file_id,
+                { headers: { Authorization: AUTH_HEADER } });
+            if (!res.ok) throw new Error(`Part ${i+1} HTTP ${res.status}`);
+            blobs.push(await res.blob());
+
+            const pct = Math.round(((i + 1) / parts.length) * 100);
+            if (barEl) barEl.style.width = pct + "%";
+        }
+
+        const final  = new Blob(blobs, { type: mimeType });
+        const objUrl = URL.createObjectURL(final);
+        el.src       = objUrl;
+        el.autoplay  = true;
+        if (progWrap) progWrap.remove();
+    } catch (err) {
+        if (statusEl) statusEl.textContent = "Lỗi: " + err.message;
+        console.error("[P4] concat blob error:", err);
+    }
+}
+
+// ─── Size formatter (local, không dùng formatSize vì scope) ──────────────────
+function _p4FmtSize(bytes) {
+    bytes = Number(bytes || 0);
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + " MB";
+    return (bytes / 1073741824).toFixed(2) + " GB";
+}
+
+// ─── Override canPreviewFile — mở rộng hỗ trợ multi-part video/audio ─────────
+// Hàm cũ chỉ cho phép part_count <= 1. Bây giờ video/audio nhiều part cũng OK.
+window._p4OrigCanPreview = typeof canPreviewFile !== "undefined" ? canPreviewFile : null;
+
+function canPreviewFile(file) {
+    const ext = p4GetExt(file.name);
+
+    // Text & image & pdf: vẫn chỉ single-part
+    const singleOnly = [
+        "jpg","jpeg","png","gif","webp","bmp","svg",
+        "pdf",
+        ...P4_TEXT_EXT
+    ];
+    if (singleOnly.includes(ext)) {
+        return (file.part_count || 1) <= 1;
+    }
+
+    // Video/audio: hỗ trợ bất kể số part (có SW hoặc concat fallback)
+    if (P4_STREAMABLE_VIDEO.includes(ext) || P4_STREAMABLE_AUDIO.includes(ext)) {
+        return true;
+    }
+
+    return false;
+}
+
+console.log("[TG-Drive P4] Streaming engine loaded ✓");
