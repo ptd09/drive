@@ -1,311 +1,124 @@
-/**
- * Telegram Drive — Cloudflare Worker
- *
- * Required bindings/secrets
- *   BOT_TOKEN        Telegram bot token (secret)
- *   CHANNEL_DATA_ID  private Telegram channel for file chunks
- *   FILES            Cloudflare KV namespace binding (metadata index)
- *   ACCESS_PASSWORD or PASSWORD_SHA256  access password (secret/variable)
- *
- * Recommended
- *   SESSION_SECRET   a separate random secret used to sign 24 h web sessions
- *   CHANNEL_META_ID  legacy metadata channel; only needed for /metadata/* compatibility
- *   ALLOWED_ORIGIN   comma-separated static site origins, e.g. https://me.github.io
- *
- * Legacy endpoints (/metadata/*, /upload, /delete, /download) deliberately remain
- * available. New metadata is stored one record per file in KV so index.json no
- * longer grows until Telegram's 20 MB download limit is hit.
- */
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="description" content="Telegram Drive — private serverless file manager.">
+  <title>Telegram Drive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- SVG symbols keep the interface dependency-free and crisp at every size. -->
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-drive" viewBox="0 0 24 24"><path d="M8 3h8l5 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3Z"/><path d="M8 3v6h8V3M7 14h10M7 18h7"/></symbol>
+    <symbol id="i-files" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.2 2.2-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.6v.2h-3v-.2a1.8 1.8 0 0 0-1.1-1.6 1.8 1.8 0 0 0-2 .4l-.1.1-2.2-2.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.6-1.1h-.2v-3h.2A1.8 1.8 0 0 0 6.6 9a1.8 1.8 0 0 0-.4-2l-.1-.1 2.2-2.2.1.1a1.8 1.8 0 0 0 2 .4 1.8 1.8 0 0 0 1.1-1.6v-.2h3v.2A1.8 1.8 0 0 0 15.6 5a1.8 1.8 0 0 0 2-.4l.1-.1 2.2 2.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1.1h.2v3h-.2a1.8 1.8 0 0 0-1.6 1.1Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4M9 13h6m-6 3h6"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 3 3 3-3 7 7"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16m8-16v16M3 9h5m8 0h5M3 15h5m8 0h5"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4M9 13h6m-6 3h5m-5 3h4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/></symbol>
+    <symbol id="i-rename" viewBox="0 0 24 24"><path d="m4 16-.8 4.8L8 20l10.8-10.8a2.1 2.1 0 0 0-3-3L5 17"/><path d="m14.5 7.5 3 3"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  </svg>
 
-const TELEGRAM_CHUNK_LIMIT = 19 * 1024 * 1024;
-const ITEM_PREFIX = 'drive:item:';
-const MAX_NAME_LENGTH = 180;
-const MAX_LIST_ITEMS = 10_000;
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar" aria-label="Drive navigation">
+      <a class="brand" href="#" aria-label="Telegram Drive home"><span class="brand-mark"><svg><use href="#i-drive"/></svg></span><span>Telegram <b>Drive</b></span></a>
+      <button class="button button-primary upload-main" id="uploadButton" type="button"><svg><use href="#i-upload"/></svg><span data-i18n="upload">Tải tệp lên</span></button>
+      <nav class="nav-list">
+        <button class="nav-item is-active" type="button" data-scope="files"><svg><use href="#i-files"/></svg><span data-i18n="myFiles">Tệp của tôi</span></button>
+        <button class="nav-item" type="button" data-scope="recent"><svg><use href="#i-clock"/></svg><span data-i18n="recent">Gần đây</span></button>
+        <button class="nav-item" type="button" data-scope="starred"><svg><use href="#i-star"/></svg><span data-i18n="starred">Đã gắn sao</span></button>
+        <button class="nav-item" type="button" data-scope="trash"><svg><use href="#i-trash"/></svg><span data-i18n="trash">Thùng rác</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="storage-card"><div class="storage-head"><span data-i18n="storage">Dung lượng</span><strong id="storageSize">0 B</strong></div><div class="storage-track"><i id="storageBar"></i></div><p id="storageCaption" data-i18n="storageCaption">Tệp đang được lưu trên Telegram</p></div>
+        <button class="settings-link" type="button" id="settingsButton"><svg><use href="#i-settings"/></svg><span data-i18n="settings">Cài đặt kết nối</span></button>
+      </div>
+    </aside>
 
-const telegramApi = token => `https://api.telegram.org/bot${token}`;
-const telegramFile = (token, path) => `https://api.telegram.org/file/bot${token}/${path}`;
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu icon-button" id="mobileMenu" type="button" aria-label="Open menu"><svg><use href="#i-files"/></svg></button>
+        <label class="search-box"><svg><use href="#i-search"/></svg><input id="searchInput" type="search" autocomplete="off" data-i18n-placeholder="searchPlaceholder" placeholder="Tìm kiếm trong Drive"><kbd>⌘ K</kbd></label>
+        <div class="top-actions">
+          <button class="text-button language-button" type="button" id="languageButton" title="Change language">VI</button>
+          <button class="icon-button" type="button" id="themeButton" data-i18n-title="toggleTheme" title="Đổi giao diện"><svg><use href="#i-moon"/></svg></button>
+          <button class="avatar" id="accountButton" type="button" title="Sign out">TD</button>
+        </div>
+      </header>
 
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), request, env);
+      <section class="workspace">
+        <div class="page-heading">
+          <div><p class="eyebrow" id="scopeLabel">TELEGRAM DRIVE</p><h1 id="pageTitle" data-i18n="myFiles">Tệp của tôi</h1></div>
+          <div class="heading-actions"><button class="button button-quiet" id="newFolderButton" type="button"><svg><use href="#i-plus"/></svg><span data-i18n="newFolder">Thư mục mới</span></button><button class="button button-primary button-mobile-upload" id="uploadButtonMobile" type="button"><svg><use href="#i-upload"/></svg><span data-i18n="upload">Tải tệp lên</span></button></div>
+        </div>
+        <div class="content-toolbar">
+          <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb"></nav>
+          <div class="view-switcher" role="group" data-i18n-title="viewMode" title="Chế độ xem"><button class="icon-button is-active" type="button" data-view="grid" aria-label="Grid view"><svg><use href="#i-grid"/></svg></button><button class="icon-button" type="button" data-view="list" aria-label="List view"><svg><use href="#i-list"/></svg></button></div>
+        </div>
+        <section class="file-area" id="fileArea" aria-label="File manager">
+          <div class="drop-hint"><svg><use href="#i-upload"/></svg><strong data-i18n="dropTitle">Thả tệp để tải lên</strong><span data-i18n="dropDescription">Tệp sẽ được chia nhỏ và lưu riêng tư trên Telegram.</span></div>
+          <div class="list-header" aria-hidden="true"><span data-i18n="name">Tên</span><span data-i18n="modified">Đã sửa đổi</span><span data-i18n="size">Kích thước</span><span></span></div>
+          <div class="file-grid" id="fileList" aria-live="polite"></div>
+          <div class="empty-state" id="emptyState" hidden><div class="empty-icon"><svg><use href="#i-folder"/></svg></div><h2 id="emptyTitle" data-i18n="emptyTitle">Thư mục này đang trống</h2><p id="emptyDescription" data-i18n="emptyDescription">Kéo tệp vào đây hoặc chọn tải tệp lên để bắt đầu.</p><button class="button button-primary" type="button" id="emptyUploadButton"><svg><use href="#i-upload"/></svg><span data-i18n="upload">Tải tệp lên</span></button></div>
+        </section>
+      </section>
+    </main>
+  </div>
 
-    try {
-      if (url.pathname === '/health' && request.method === 'GET') {
-        return json({ ok: true, kv: Boolean(env.FILES), legacyMetadata: Boolean(env.CHANNEL_META_ID) }, 200, request, env);
-      }
-      if (url.pathname === '/auth' && request.method === 'POST') return handleAuth(request, env);
+  <input id="fileInput" type="file" multiple hidden>
 
-      const authenticated = await isAuthenticated(request, env);
-      if (!authenticated) return error('Unauthorized.', 401, request, env);
+  <section class="upload-tray" id="uploadTray" aria-live="polite" aria-label="Upload progress" hidden>
+    <div class="tray-title"><span data-i18n="uploads">Đang tải lên</span><button class="icon-button close-tray" id="closeUploadTray" type="button" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div id="uploadQueue"></div>
+  </section>
+  <div class="toast-stack" id="toastStack" aria-live="assertive" aria-atomic="true"></div>
 
-      // Existing browser clients can continue to use their original API contract.
-      if (url.pathname === '/metadata/get' && request.method === 'GET') return legacyMetadataGet(request, env);
-      if (url.pathname === '/metadata/save' && request.method === 'POST') return legacyMetadataSave(request, env);
-      if (url.pathname === '/upload' && request.method === 'POST') return legacyUpload(request, env);
-      if (url.pathname === '/delete' && request.method === 'POST') return legacyDelete(request, env);
-      if (url.pathname === '/download' && request.method === 'GET') return legacyDownload(request, env);
+  <!-- Authentication is local to the current browser; the password is never persisted. -->
+  <div class="modal-backdrop login-backdrop" id="loginModal">
+    <form class="modal login-card" id="loginForm">
+      <div class="login-logo"><svg><use href="#i-drive"/></svg></div><p class="eyebrow">PRIVATE CLOUD</p><h2 data-i18n="welcome">Chào mừng trở lại</h2><p class="modal-intro" data-i18n="loginIntro">Đăng nhập để mở không gian tệp riêng tư của bạn.</p>
+      <label class="field-label" for="apiUrl" data-i18n="apiUrl">Địa chỉ Cloudflare Worker</label><input class="field" id="apiUrl" type="url" required placeholder="https://your-worker.workers.dev">
+      <label class="field-label" for="password" data-i18n="password">Mật khẩu truy cập</label><div class="password-field"><input class="field" id="password" type="password" required autocomplete="current-password" data-i18n-placeholder="passwordPlaceholder" placeholder="Nhập mật khẩu"><button class="password-toggle" type="button" id="passwordToggle" aria-label="Show password">◉</button></div>
+      <button class="button button-primary button-full" id="loginButton" type="submit"><span data-i18n="signIn">Đăng nhập</span></button><p class="login-note" data-i18n="loginNote">Kết nối được mã hóa và mật khẩu không được lưu trong trình duyệt.</p>
+    </form>
+  </div>
 
-      // KV-backed API used by the refactored static frontend.
-      if (url.pathname === '/files' && request.method === 'GET') return listFiles(url, request, env);
-      if (url.pathname === '/files' && request.method === 'POST') return createFileRecord(request, env);
-      if (url.pathname === '/folders' && request.method === 'POST') return createFolder(request, env);
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <form class="modal small-modal" id="settingsForm"><div class="modal-header"><div><p class="eyebrow" data-i18n="settings">Cài đặt kết nối</p><h2 data-i18n="connection">Kết nối Worker</h2></div><button class="icon-button" type="button" data-close-modal="settingsModal" aria-label="Close"><svg><use href="#i-close"/></svg></button></div><label class="field-label" for="settingsApiUrl" data-i18n="apiUrl">Địa chỉ Cloudflare Worker</label><input class="field" id="settingsApiUrl" type="url" required><p class="form-help" data-i18n="settingsHelp">Đổi địa chỉ sẽ đăng xuất phiên hiện tại.</p><div class="modal-actions"><button class="button button-quiet" type="button" data-close-modal="settingsModal" data-i18n="cancel">Hủy</button><button class="button button-primary" type="submit" data-i18n="save">Lưu thay đổi</button></div></form>
+  </div>
 
-      const contentMatch = url.pathname.match(/^\/files\/([^/]+)\/content$/);
-      if (contentMatch && request.method === 'GET') return streamFile(decodeId(contentMatch[1]), request, env);
+  <div class="modal-backdrop" id="promptModal" hidden>
+    <form class="modal small-modal" id="promptForm"><div class="modal-header"><div><p class="eyebrow" id="promptEyebrow">TELEGRAM DRIVE</p><h2 id="promptTitle">Tên mới</h2></div><button class="icon-button" type="button" data-close-modal="promptModal" aria-label="Close"><svg><use href="#i-close"/></svg></button></div><label class="field-label" id="promptLabel" for="promptInput">Tên</label><input class="field" id="promptInput" type="text" maxlength="180" required autocomplete="off"><p class="form-help" id="promptHelp"></p><div class="modal-actions"><button class="button button-quiet" type="button" data-close-modal="promptModal" data-i18n="cancel">Hủy</button><button class="button button-primary" id="promptSubmit" type="submit" data-i18n="save">Lưu thay đổi</button></div></form>
+  </div>
 
-      const itemMatch = url.pathname.match(/^\/files\/([^/]+)$/);
-      if (itemMatch && request.method === 'POST') return updateFile(decodeId(itemMatch[1]), request, env);
-      if (itemMatch && request.method === 'DELETE') return deleteFile(decodeId(itemMatch[1]), request, env, ctx);
-
-      return error('Not found.', 404, request, env);
-    } catch (cause) {
-      // Deliberately do not send Telegram/API internals to the browser.
-      console.error('Telegram Drive Worker error:', cause);
-      return error(cause instanceof DriveError ? cause.message : 'Unexpected server error.', cause instanceof DriveError ? cause.status : 500, request, env);
+  <!-- Retains the existing optional range-stream Service Worker. It is inert for
+       normal requests and can continue serving legacy media-preview routes. -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
     }
-  }
-};
-
-class DriveError extends Error {
-  constructor(message, status = 400) { super(message); this.status = status; }
-}
-
-function corsHeaders(request, env) {
-  const origin = request.headers.get('Origin');
-  const allowed = String(env.ALLOWED_ORIGIN || '*').split(',').map(value => value.trim()).filter(Boolean);
-  const originAllowed = !origin || allowed.includes('*') || allowed.includes(origin);
-  const headers = new Headers({
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Drive-Token, Range',
-    'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length, Content-Range, Accept-Ranges',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin'
-  });
-  if (originAllowed) headers.set('Access-Control-Allow-Origin', allowed.includes('*') ? '*' : origin || allowed[0]);
-  return headers;
-}
-function withCors(response, request, env) {
-  const headers = new Headers(response.headers);
-  corsHeaders(request, env).forEach((value, key) => headers.set(key, value));
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-}
-function json(data, status, request, env) {
-  return withCors(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }), request, env);
-}
-function error(message, status, request, env) { return json({ ok: false, error: message }, status, request, env); }
-function assert(condition, message, status = 400) { if (!condition) throw new DriveError(message, status); }
-function requireTelegram(env) { assert(env.BOT_TOKEN && env.CHANNEL_DATA_ID, 'Worker is missing BOT_TOKEN or CHANNEL_DATA_ID.', 503); }
-function requireKv(env) { assert(env.FILES, 'Worker is missing the FILES KV binding.', 503); }
-function decodeId(value) { try { return decodeURIComponent(value); } catch { throw new DriveError('Invalid file id.'); } }
-function validId(id) { return typeof id === 'string' && /^[a-z0-9-]{8,64}$/i.test(id); }
-function itemKey(id) { return `${ITEM_PREFIX}${id}`; }
-function cleanName(value) {
-  assert(typeof value === 'string', 'A name is required.');
-  const name = value.trim().replace(/[\u0000-\u001f\\/]/g, '');
-  assert(name.length > 0 && name.length <= MAX_NAME_LENGTH, `Name must contain 1–${MAX_NAME_LENGTH} characters.`);
-  return name;
-}
-function optionalParent(value) { assert(value === null || value === undefined || validId(value), 'Invalid parent folder.'); return value || null; }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Authentication
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function handleAuth(request, env) {
-  let body;
-  try { body = await request.json(); } catch { return error('Body must be valid JSON.', 400, request, env); }
-  if (!env.ACCESS_PASSWORD && !env.PASSWORD_SHA256) return error('Password authentication is not configured.', 503, request, env);
-  if (!await passwordMatches(String(body?.password || ''), env)) return error('Invalid password.', 401, request, env);
-  const expiresIn = Math.max(300, Math.min(Number(env.SESSION_TTL_SECONDS) || 86_400, 604_800));
-  const token = await createSessionToken(env, expiresIn);
-  return json({ ok: true, token, expiresIn }, 200, request, env);
-}
-
-async function isAuthenticated(request, env) {
-  // Matching old behavior: a deployment with no password remains open. Do not use
-  // this mode for a real drive; /auth intentionally refuses to create a session.
-  if (!env.ACCESS_PASSWORD && !env.PASSWORD_SHA256) return true;
-  const sessionToken = request.headers.get('X-Drive-Token') || bearerToken(request.headers.get('Authorization'));
-  if (sessionToken && await verifySessionToken(sessionToken, env)) return true;
-  // Compatibility for the old frontend, which sent the shared password verbatim.
-  const legacyAuthorization = request.headers.get('Authorization') || '';
-  return passwordMatches(legacyAuthorization, env);
-}
-function bearerToken(value) { const match = /^Bearer\s+(.+)$/i.exec(value || ''); return match ? match[1] : ''; }
-async function passwordMatches(candidate, env) {
-  if (!candidate) return false;
-  if (env.PASSWORD_SHA256) return timingSafeEqual(await sha256Hex(candidate), String(env.PASSWORD_SHA256).toLowerCase());
-  return timingSafeEqual(candidate, String(env.ACCESS_PASSWORD || ''));
-}
-function timingSafeEqual(a, b) { const left = encoder.encode(String(a)); const right = encoder.encode(String(b)); let difference = left.length ^ right.length; const longest = Math.max(left.length, right.length); for (let index = 0; index < longest; index += 1) difference |= (left[index] || 0) ^ (right[index] || 0); return difference === 0; }
-async function sha256Hex(value) { const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value))); return [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join(''); }
-function base64UrlEncode(value) { const bytes = typeof value === 'string' ? encoder.encode(value) : new Uint8Array(value); let binary = ''; bytes.forEach(byte => { binary += String.fromCharCode(byte); }); return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''); }
-function base64UrlDecode(value) { const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4); const binary = atob(normalized); return Uint8Array.from(binary, char => char.charCodeAt(0)); }
-async function hmacKey(env) { return crypto.subtle.importKey('raw', encoder.encode(env.SESSION_SECRET || env.ACCESS_PASSWORD || env.PASSWORD_SHA256), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']); }
-async function createSessionToken(env, expiresIn) { const payload = base64UrlEncode(JSON.stringify({ v: 1, exp: Math.floor(Date.now() / 1000) + expiresIn })); const signature = await crypto.subtle.sign('HMAC', await hmacKey(env), encoder.encode(payload)); return `${payload}.${base64UrlEncode(signature)}`; }
-async function verifySessionToken(token, env) {
-  try {
-    const [payload, signature, extra] = String(token).split('.'); if (!payload || !signature || extra) return false;
-    const valid = await crypto.subtle.verify('HMAC', await hmacKey(env), base64UrlDecode(signature), encoder.encode(payload)); if (!valid) return false;
-    const data = JSON.parse(decoder.decode(base64UrlDecode(payload))); return Number.isFinite(data.exp) && data.exp > Math.floor(Date.now() / 1000) && data.v === 1;
-  } catch { return false; }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Telegram and legacy compatibility API
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function tgCall(env, method, payload) {
-  requireTelegram(env);
-  const response = await fetch(`${telegramApi(env.BOT_TOKEN)}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) throw new DriveError(`Telegram request failed: ${data.description || response.status}.`, 502);
-  return data.result;
-}
-async function tgForm(env, method, formData) {
-  requireTelegram(env);
-  const response = await fetch(`${telegramApi(env.BOT_TOKEN)}/${method}`, { method: 'POST', body: formData });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) throw new DriveError(`Telegram request failed: ${data.description || response.status}.`, 502);
-  return data.result;
-}
-async function tgFilePath(env, fileId) { const result = await tgCall(env, 'getFile', { file_id: fileId }); assert(result?.file_path, 'Telegram returned no file path.', 502); return result.file_path; }
-async function telegramBytes(env, fileId, range) { const path = await tgFilePath(env, fileId); const headers = range ? { Range: range } : undefined; const response = await fetch(telegramFile(env.BOT_TOKEN, path), { headers }); if (!response.ok) throw new DriveError('Could not retrieve file bytes from Telegram.', 502); return response; }
-
-async function legacyMetadataGet(request, env) {
-  assert(env.CHANNEL_META_ID, 'Worker is missing CHANNEL_META_ID for legacy metadata.', 503);
-  const chat = await tgCall(env, 'getChat', { chat_id: env.CHANNEL_META_ID }); const pinned = chat.pinned_message;
-  if (!pinned?.document?.file_id) return json({ ok: true, metadata: { version: 1, updated_at: null, files: [] } }, 200, request, env);
-  const response = await telegramBytes(env, pinned.document.file_id); const text = await response.text();
-  let metadata; try { metadata = JSON.parse(text); } catch { throw new DriveError('Legacy index.json is invalid.', 500); }
-  return json({ ok: true, metadata, meta_message_id: pinned.message_id }, 200, request, env);
-}
-async function legacyMetadataSave(request, env) {
-  assert(env.CHANNEL_META_ID, 'Worker is missing CHANNEL_META_ID for legacy metadata.', 503);
-  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); }
-  const metadata = body?.metadata; assert(metadata && Array.isArray(metadata.files), 'metadata.files must be an array.');
-  metadata.version ||= 1; metadata.updated_at = new Date().toISOString();
-  const serialized = JSON.stringify(metadata, null, 2);
-  // A Telegram Bot cannot later retrieve a document >=20 MB through getFile.
-  assert(encoder.encode(serialized).byteLength < TELEGRAM_CHUNK_LIMIT, 'Legacy metadata is too large. Migrate the frontend to the KV /files API.', 413);
-  let oldMessageId = null;
-  try { oldMessageId = (await tgCall(env, 'getChat', { chat_id: env.CHANNEL_META_ID })).pinned_message?.message_id || null; } catch { /* first install or missing pin */ }
-  const form = new FormData(); form.append('chat_id', env.CHANNEL_META_ID); form.append('document', new Blob([serialized], { type: 'application/json' }), 'index.json'); form.append('disable_notification', 'true');
-  const result = await tgForm(env, 'sendDocument', form); await tgCall(env, 'pinChatMessage', { chat_id: env.CHANNEL_META_ID, message_id: result.message_id, disable_notification: true });
-  if (oldMessageId && oldMessageId !== result.message_id) { try { await tgCall(env, 'deleteMessage', { chat_id: env.CHANNEL_META_ID, message_id: oldMessageId }); } catch { /* cleanup is best effort */ } }
-  return json({ ok: true, message_id: result.message_id, updated_at: metadata.updated_at }, 200, request, env);
-}
-async function legacyUpload(request, env) {
-  const form = await request.formData().catch(() => { throw new DriveError('Request must be multipart/form-data.'); }); const file = form.get('file');
-  assert(file && typeof file.arrayBuffer === 'function', 'Missing multipart field "file".'); assert(Number(file.size) > 0, 'Empty chunks are not allowed.'); assert(Number(file.size) <= TELEGRAM_CHUNK_LIMIT, 'Chunk exceeds the 19 MB Telegram-safe limit.', 413);
-  const filename = cleanName(String(form.get('filename') || file.name || 'chunk.bin')); const outbound = new FormData(); outbound.append('chat_id', env.CHANNEL_DATA_ID); outbound.append('document', file, filename); outbound.append('disable_notification', 'true');
-  const result = await tgForm(env, 'sendDocument', outbound); assert(result.document?.file_id, 'Telegram did not return a document.', 502);
-  return json({ ok: true, telegram_file_id: result.document.file_id, telegram_message_id: result.message_id, size: result.document.file_size }, 200, request, env);
-}
-async function legacyDelete(request, env) { let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } assert(Number.isInteger(Number(body?.message_id)), 'message_id is required.'); await tgCall(env, 'deleteMessage', { chat_id: env.CHANNEL_DATA_ID, message_id: Number(body.message_id) }); return json({ ok: true }, 200, request, env); }
-async function legacyDownload(request, env) {
-  const fileId = new URL(request.url).searchParams.get('file_id'); assert(fileId && fileId.length < 256, 'file_id is required.'); const telegramResponse = await telegramBytes(env, fileId, request.headers.get('Range'));
-  return binaryResponse(telegramResponse, request, env, { name: 'download', mime: telegramResponse.headers.get('Content-Type') || 'application/octet-stream', attachment: false });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// KV metadata API
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function getAllItems(env) {
-  requireKv(env); const items = []; let cursor; do { const page = await env.FILES.list({ prefix: ITEM_PREFIX, cursor, limit: 1_000 }); const pageItems = await Promise.all(page.keys.map(key => env.FILES.get(key.name, 'json'))); pageItems.forEach(item => { if (item?.id && (item.type === 'file' || item.type === 'folder')) items.push(item); }); cursor = page.list_complete ? undefined : page.cursor; } while (cursor && items.length < MAX_LIST_ITEMS);
-  if (cursor) throw new DriveError(`Drive has more than ${MAX_LIST_ITEMS} entries; add pagination before continuing.`, 413); return items;
-}
-async function getItem(env, id) { requireKv(env); assert(validId(id), 'Invalid file id.'); const item = await env.FILES.get(itemKey(id), 'json'); assert(item, 'File not found.', 404); return item; }
-async function ensureParent(env, parentId, items = null) { if (!parentId) return; const parent = items ? items.find(item => item.id === parentId) : await getItem(env, parentId); assert(parent?.type === 'folder' && !parent.trashed, 'Destination folder is unavailable.'); }
-function publicItem(item) { return { id: item.id, type: item.type, name: item.name, parentId: item.parentId || null, mime: item.mime || '', size: Number(item.size) || 0, starred: Boolean(item.starred), trashed: Boolean(item.trashed), createdAt: item.createdAt, updatedAt: item.updatedAt }; }
-
-async function listFiles(url, request, env) {
-  const scope = ['files', 'recent', 'starred', 'trash'].includes(url.searchParams.get('scope')) ? url.searchParams.get('scope') : 'files'; const parentId = optionalParent(url.searchParams.get('parentId')); const query = String(url.searchParams.get('q') || '').trim().toLocaleLowerCase(); let all = await getAllItems(env);
-  // One-time, non-destructive migration for installations that used index.json
-  // before the KV API existed. The original index and all legacy endpoints stay.
-  if (!all.length) all = await importLegacyIndexIntoKv(env);
-  const active = all.filter(item => !item.trashed); let items;
-  if (scope === 'trash') items = all.filter(item => item.trashed); else if (scope === 'starred') items = active.filter(item => item.starred); else if (scope === 'recent') items = active; else items = active.filter(item => (item.parentId || null) === parentId);
-  if (query) items = items.filter(item => item.name.toLocaleLowerCase().includes(query));
-  items.sort((a, b) => scope === 'files' && a.type !== b.type ? (a.type === 'folder' ? -1 : 1) : scope === 'files' ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) : String(b.updatedAt).localeCompare(String(a.updatedAt)));
-  const breadcrumbs = []; let crumbId = parentId; const itemById = new Map(all.map(item => [item.id, item])); for (let guard = 0; crumbId && guard < 32; guard += 1) { const folder = itemById.get(crumbId); if (!folder || folder.type !== 'folder') break; breadcrumbs.unshift({ id: folder.id, name: folder.name }); crumbId = folder.parentId; }
-  const stats = { bytes: active.filter(item => item.type === 'file').reduce((sum, item) => sum + (Number(item.size) || 0), 0), count: active.length };
-  return json({ ok: true, items: items.map(publicItem), breadcrumbs, stats }, 200, request, env);
-}
-async function importLegacyIndexIntoKv(env) {
-  if (!env.CHANNEL_META_ID) return [];
-  try {
-    const chat = await tgCall(env, 'getChat', { chat_id: env.CHANNEL_META_ID });
-    if (!chat.pinned_message?.document?.file_id) return [];
-    const text = await (await telegramBytes(env, chat.pinned_message.document.file_id)).text();
-    const files = JSON.parse(text)?.files; if (!Array.isArray(files)) return [];
-    const migrated = [];
-    for (const legacy of files.slice(0, MAX_LIST_ITEMS)) {
-      try {
-        const name = cleanName(legacy?.name); const size = Number(legacy?.size); if (!Number.isFinite(size) || size <= 0) continue;
-        const id = validId(legacy?.id) ? legacy.id : crypto.randomUUID();
-        const parts = sanitizeParts((legacy.parts || []).map((part, index) => ({ fileId: part.fileId || part.file_id || part.telegram_file_id, messageId: part.messageId || part.message_id || part.telegram_message_id, size: part.size, index })), size);
-        const createdAt = typeof legacy.createdAt === 'string' ? legacy.createdAt : (typeof legacy.created_at === 'string' ? legacy.created_at : new Date().toISOString());
-        const item = { id, type: 'file', name, parentId: null, mime: String(legacy.mime || legacy.mime_type || 'application/octet-stream').slice(0, 150), size, parts, starred: false, trashed: false, createdAt, updatedAt: createdAt };
-        await env.FILES.put(itemKey(item.id), JSON.stringify(item)); migrated.push(item);
-      } catch { /* Ignore only malformed legacy entries; valid files continue migrating. */ }
-    }
-    return migrated;
-  } catch (cause) { console.warn('Legacy metadata migration skipped:', cause); return []; }
-}
-async function createFolder(request, env) {
-  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } const name = cleanName(body?.name); const parentId = optionalParent(body?.parentId); await ensureParent(env, parentId); const now = new Date().toISOString(); const item = { id: crypto.randomUUID(), type: 'folder', name, parentId, size: 0, starred: false, trashed: false, createdAt: now, updatedAt: now }; await env.FILES.put(itemKey(item.id), JSON.stringify(item)); return json({ ok: true, item: publicItem(item) }, 201, request, env);
-}
-function sanitizeParts(rawParts, expectedSize) {
-  assert(Array.isArray(rawParts) && rawParts.length > 0 && rawParts.length <= 5_000, 'A file needs between 1 and 5,000 uploaded parts.'); const parts = rawParts.map((part, index) => { assert(typeof part?.fileId === 'string' && part.fileId.length < 256, `Part ${index + 1} is invalid.`); assert(Number.isInteger(Number(part?.messageId)), `Part ${index + 1} is missing its Telegram message id.`); const size = Number(part.size); assert(Number.isFinite(size) && size > 0 && size <= TELEGRAM_CHUNK_LIMIT, `Part ${index + 1} has an invalid size.`); return { fileId: part.fileId, messageId: Number(part.messageId), size, index: Number.isInteger(Number(part.index)) ? Number(part.index) : index }; }).sort((a, b) => a.index - b.index); assert(parts.reduce((sum, part) => sum + part.size, 0) >= Number(expectedSize) * .98, 'Uploaded parts do not match the reported file size.'); return parts;
-}
-async function createFileRecord(request, env) {
-  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } const name = cleanName(body?.name); const parentId = optionalParent(body?.parentId); const size = Number(body?.size); assert(Number.isFinite(size) && size > 0, 'File size must be greater than zero.'); await ensureParent(env, parentId); const now = new Date().toISOString(); const item = { id: crypto.randomUUID(), type: 'file', name, parentId, mime: typeof body?.mime === 'string' ? body.mime.slice(0, 150) : 'application/octet-stream', size, parts: sanitizeParts(body?.parts, size), starred: false, trashed: false, createdAt: now, updatedAt: now }; await env.FILES.put(itemKey(item.id), JSON.stringify(item)); return json({ ok: true, item: publicItem(item) }, 201, request, env);
-}
-async function updateFile(id, request, env) {
-  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } const item = await getItem(env, id); const operation = body?.operation;
-  if (operation === 'rename') item.name = cleanName(body.name);
-  else if (operation === 'star') { assert(!item.trashed, 'Restore the item before starring it.', 409); item.starred = Boolean(body.starred); }
-  else if (operation === 'move') { const parentId = optionalParent(body.parentId); const all = await getAllItems(env); await ensureParent(env, parentId, all); assert(item.type !== 'folder' || !wouldCreateCycle(item.id, parentId, new Map(all.map(entry => [entry.id, entry]))), 'A folder cannot be moved into itself.'); item.parentId = parentId; }
-  else if (operation === 'trash' || operation === 'restore') { const trashed = operation === 'trash'; const all = await getAllItems(env); const tree = descendantsOf(item, all); const now = new Date().toISOString(); await Promise.all(tree.map(entry => { entry.trashed = trashed; entry.updatedAt = now; return env.FILES.put(itemKey(entry.id), JSON.stringify(entry)); })); return json({ ok: true, item: publicItem({ ...item, trashed }) }, 200, request, env); }
-  else throw new DriveError('Unknown file operation.');
-  item.updatedAt = new Date().toISOString(); await env.FILES.put(itemKey(item.id), JSON.stringify(item)); return json({ ok: true, item: publicItem(item) }, 200, request, env);
-}
-function descendantsOf(root, all) { const found = [root]; const byParent = new Map(); all.forEach(item => { const list = byParent.get(item.parentId || '') || []; list.push(item); byParent.set(item.parentId || '', list); }); for (let index = 0; index < found.length; index += 1) (byParent.get(found[index].id) || []).forEach(child => found.push(child)); return found; }
-function wouldCreateCycle(id, parentId, byId) { let current = parentId; for (let guard = 0; current && guard < 64; guard += 1) { if (current === id) return true; current = byId.get(current)?.parentId; } return false; }
-async function deleteFile(id, request, env, ctx) {
-  const item = await getItem(env, id); assert(item.trashed, 'Move the item to trash before permanently deleting it.', 409); const all = await getAllItems(env); const tree = descendantsOf(item, all); await Promise.all(tree.map(entry => env.FILES.delete(itemKey(entry.id))));
-  // Data deletion is best effort. KV is removed first, so a failed Telegram delete
-  // never leaves a downloadable index entry. Workers may finish the cleanup later.
-  ctx.waitUntil(Promise.allSettled(tree.filter(entry => entry.type === 'file').flatMap(entry => (entry.parts || []).map(part => tgCall(env, 'deleteMessage', { chat_id: env.CHANNEL_DATA_ID, message_id: part.messageId })))).then(() => undefined));
-  return json({ ok: true }, 200, request, env);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Private file streaming (one or many Telegram chunks)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function parseRange(header, total) {
-  if (!header) return { start: 0, end: total - 1, partial: false }; const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim()); if (!match) throw new DriveError('Invalid byte range.', 416); let start; let end;
-  if (!match[1]) { const count = Number(match[2]); assert(Number.isInteger(count) && count > 0, 'Invalid byte range.', 416); start = Math.max(0, total - count); end = total - 1; } else { start = Number(match[1]); end = match[2] ? Number(match[2]) : total - 1; }
-  assert(Number.isInteger(start) && Number.isInteger(end) && start >= 0 && start <= end && start < total, 'Requested range is unavailable.', 416); return { start, end: Math.min(end, total - 1), partial: true };
-}
-function contentDisposition(name) { return `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(name)}`; }
-function binaryResponse(telegramResponse, request, env, details) {
-  const headers = new Headers({ 'Content-Type': details.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' }); const length = telegramResponse.headers.get('Content-Length'); const range = telegramResponse.headers.get('Content-Range'); if (length) headers.set('Content-Length', length); if (range) headers.set('Content-Range', range); if (details.attachment) headers.set('Content-Disposition', contentDisposition(details.name)); return withCors(new Response(telegramResponse.body, { status: telegramResponse.status, headers }), request, env);
-}
-async function streamFile(id, request, env) {
-  const item = await getItem(env, id); assert(item.type === 'file' && !item.trashed, 'File not found.', 404); const parts = Array.isArray(item.parts) ? [...item.parts].sort((a, b) => Number(a.index) - Number(b.index)) : []; assert(parts.length, 'This file has no uploaded parts.', 500); const total = parts.reduce((sum, part) => sum + Number(part.size || 0), 0); assert(total > 0, 'This file has an invalid size.', 500); const range = parseRange(request.headers.get('Range'), total); const selected = []; let offset = 0;
-  for (const part of parts) { const end = offset + part.size - 1; if (end >= range.start && offset <= range.end) selected.push({ part, start: Math.max(0, range.start - offset), end: Math.min(part.size - 1, range.end - offset) }); offset += part.size; }
-  let cancelled = false;
-  const stream = new ReadableStream({
-    async start(controller) { try { for (const selectedPart of selected) { if (cancelled) break; const fullPart = selectedPart.start === 0 && selectedPart.end === selectedPart.part.size - 1; const response = await telegramBytes(env, selectedPart.part.fileId, fullPart ? null : `bytes=${selectedPart.start}-${selectedPart.end}`); const reader = response.body.getReader(); try { while (!cancelled) { const { done, value } = await reader.read(); if (done) break; controller.enqueue(value); } } finally { reader.releaseLock(); } } controller.close(); } catch (cause) { controller.error(cause); } },
-    cancel() { cancelled = true; }
-  });
-  const length = range.end - range.start + 1; const headers = new Headers({ 'Content-Type': item.mime || 'application/octet-stream', 'Content-Length': String(length), 'Content-Disposition': contentDisposition(item.name), 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' }); if (range.partial) headers.set('Content-Range', `bytes ${range.start}-${range.end}/${total}`);
-  return withCors(new Response(stream, { status: range.partial ? 206 : 200, headers }), request, env);
-}
+  </script>
+  <script src="app.js" defer></script>
+</body>
+</html>
