@@ -1,369 +1,311 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#05050a">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>TG-DrivePro — Hệ thống lưu trữ đám mây tối thượng</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+/**
+ * Telegram Drive — Cloudflare Worker
+ *
+ * Required bindings/secrets
+ *   BOT_TOKEN        Telegram bot token (secret)
+ *   CHANNEL_DATA_ID  private Telegram channel for file chunks
+ *   FILES            Cloudflare KV namespace binding (metadata index)
+ *   ACCESS_PASSWORD or PASSWORD_SHA256  access password (secret/variable)
+ *
+ * Recommended
+ *   SESSION_SECRET   a separate random secret used to sign 24 h web sessions
+ *   CHANNEL_META_ID  legacy metadata channel; only needed for /metadata/* compatibility
+ *   ALLOWED_ORIGIN   comma-separated static site origins, e.g. https://me.github.io
+ *
+ * Legacy endpoints (/metadata/*, /upload, /delete, /download) deliberately remain
+ * available. New metadata is stored one record per file in KV so index.json no
+ * longer grows until Telegram's 20 MB download limit is hit.
+ */
 
-    <!-- ★ Phase-4: Service Worker registration for range streaming -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js', { scope: '/' })
-                .then(reg => console.log('[SW] Registered, scope:', reg.scope))
-                .catch(err => console.warn('[SW] Registration failed:', err));
-        }
-    </script>
+const TELEGRAM_CHUNK_LIMIT = 19 * 1024 * 1024;
+const ITEM_PREFIX = 'drive:item:';
+const MAX_NAME_LENGTH = 180;
+const MAX_LIST_ITEMS = 10_000;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
-</head>
-<body class="app-container" id="app-body">
+const telegramApi = token => `https://api.telegram.org/bot${token}`;
+const telegramFile = (token, path) => `https://api.telegram.org/file/bot${token}/${path}`;
 
-    <div class="background-glow">
-        <div class="blob blob-1"></div>
-        <div class="blob blob-2"></div>
-        <div class="blob blob-3"></div>
-    </div>
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), request, env);
 
-    <section id="login-page" class="login-page">
-        <div class="login-card">
-            <div class="login-logo-zone">
-                <i class="fa-solid fa-cloud-bolt login-icon"></i>
-                <h1 class="logo-text">TG-Drive<span>Pro</span></h1>
-            </div>
-            <p class="subtitle">Hệ thống lưu trữ đám mây cá nhân hóa sử dụng Telegram Endpoint</p>
-            <form class="login-form">
-                <div class="input-group">
-                    <i class="fa-solid fa-lock input-icon-inner"></i>
-                    <input class="input password-input" type="password" placeholder="Nhập mã khóa hệ thống..." required>
-                </div>
-                <button class="btn btn-primary btn-block" type="submit">
-                    <span>Xác thực kết nối</span>
-                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
-                </button>
-            </form>
-            <div class="login-footer">Protected by Cloudflare Worker Shield</div>
-        </div>
-    </section>
+    try {
+      if (url.pathname === '/health' && request.method === 'GET') {
+        return json({ ok: true, kv: Boolean(env.FILES), legacyMetadata: Boolean(env.CHANNEL_META_ID) }, 200, request, env);
+      }
+      if (url.pathname === '/auth' && request.method === 'POST') return handleAuth(request, env);
 
-    <section id="dashboard" class="dashboard-layout" style="display: none;">
-        
-        <aside class="sidebar">
-            <div class="sidebar-brand">
-                <i class="fa-solid fa-cloud-bolt brand-icon"></i>
-                <span class="brand-text">TG-Drive</span>
-            </div>
+      const authenticated = await isAuthenticated(request, env);
+      if (!authenticated) return error('Unauthorized.', 401, request, env);
 
-            <div class="upload-action-wrapper">
-                <button class="btn-upload-trigger" id="btn-upload-trigger">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>Tải lên mới</span>
-                </button>
-                <input type="file" id="file-input" multiple style="display: none;">
-            </div>
+      // Existing browser clients can continue to use their original API contract.
+      if (url.pathname === '/metadata/get' && request.method === 'GET') return legacyMetadataGet(request, env);
+      if (url.pathname === '/metadata/save' && request.method === 'POST') return legacyMetadataSave(request, env);
+      if (url.pathname === '/upload' && request.method === 'POST') return legacyUpload(request, env);
+      if (url.pathname === '/delete' && request.method === 'POST') return legacyDelete(request, env);
+      if (url.pathname === '/download' && request.method === 'GET') return legacyDownload(request, env);
 
-            <nav class="sidebar-nav touch-scroll">
-                <button class="nav-item active" data-tab="my-drive">
-                    <i class="fa-solid fa-hard-drive"></i>
-                    <span>Bộ nhớ của tôi</span>
-                </button>
-                <button class="nav-item" data-tab="recent">
-                    <i class="fa-solid fa-clock"></i>
-                    <span>Gần đây</span>
-                </button>
-                <button class="nav-item" data-tab="trash">
-                    <i class="fa-solid fa-trash-can"></i>
-                    <span>Thùng rác</span>
-                </button>
-                <button class="nav-item" data-tab="logs">
-                    <i class="fa-solid fa-terminal"></i>
-                    <span>Nhật ký hệ thống</span>
-                </button>
-            </nav>
+      // KV-backed API used by the refactored static frontend.
+      if (url.pathname === '/files' && request.method === 'GET') return listFiles(url, request, env);
+      if (url.pathname === '/files' && request.method === 'POST') return createFileRecord(request, env);
+      if (url.pathname === '/folders' && request.method === 'POST') return createFolder(request, env);
 
-            <div class="storage-card">
-                <div class="storage-info-text">
-                    <i class="fa-solid fa-cloud"></i>
-                    <span>Trạng thái bộ nhớ</span>
-                </div>
-                <div class="storage-progress-bar">
-                    <div class="storage-progress-fill" style="width: 42%;"></div>
-                </div>
-                <div class="storage-details">
-                    <span id="storage-used-text">Đang dùng: --</span>
-                    <span>Vô hạn (Telegram)</span>
-                </div>
-            </div>
-        </aside>
+      const contentMatch = url.pathname.match(/^\/files\/([^/]+)\/content$/);
+      if (contentMatch && request.method === 'GET') return streamFile(decodeId(contentMatch[1]), request, env);
 
-<main class="main-workspace">
+      const itemMatch = url.pathname.match(/^\/files\/([^/]+)$/);
+      if (itemMatch && request.method === 'POST') return updateFile(decodeId(itemMatch[1]), request, env);
+      if (itemMatch && request.method === 'DELETE') return deleteFile(decodeId(itemMatch[1]), request, env, ctx);
 
-    <!-- ╔═══════════════════════════════════════════════╗
-         ║  KHỐI TRÊN CÙNG: HEADER + STATS + DROP ZONE   ║
-         ╚═══════════════════════════════════════════════╝ -->
-    <div class="header-stats-wrapper">
+      return error('Not found.', 404, request, env);
+    } catch (cause) {
+      // Deliberately do not send Telegram/API internals to the browser.
+      console.error('Telegram Drive Worker error:', cause);
+      return error(cause instanceof DriveError ? cause.message : 'Unexpected server error.', cause instanceof DriveError ? cause.status : 500, request, env);
+    }
+  }
+};
 
-        <header class="top-header">
-            <div class="search-container">
-                <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="search" id="search-input" placeholder="Tìm kiếm nhanh tệp tin, tài liệu, media...">
-            </div>
+class DriveError extends Error {
+  constructor(message, status = 400) { super(message); this.status = status; }
+}
 
-            <div class="header-right-actions">
-                <div class="system-status">
-                    <span class="status-indicator-dot"></span>
-                    <span class="status-badge">Hệ thống trực tuyến</span>
-                </div>
-                <div class="user-profile">
-                    <div class="avatar">
-                        <i class="fa-solid fa-user-gear"></i>
-                    </div>
-                    <span class="username">Admin</span>
-                </div>
-                <button class="btn btn-danger-icon logout-btn" title="Đăng xuất khỏi hệ thống">
-                    <i class="fa-solid fa-power-off"></i>
-                </button>
-            </div>
-        </header>
+function corsHeaders(request, env) {
+  const origin = request.headers.get('Origin');
+  const allowed = String(env.ALLOWED_ORIGIN || '*').split(',').map(value => value.trim()).filter(Boolean);
+  const originAllowed = !origin || allowed.includes('*') || allowed.includes(origin);
+  const headers = new Headers({
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Drive-Token, Range',
+    'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length, Content-Range, Accept-Ranges',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin'
+  });
+  if (originAllowed) headers.set('Access-Control-Allow-Origin', allowed.includes('*') ? '*' : origin || allowed[0]);
+  return headers;
+}
+function withCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  corsHeaders(request, env).forEach((value, key) => headers.set(key, value));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+function json(data, status, request, env) {
+  return withCors(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }), request, env);
+}
+function error(message, status, request, env) { return json({ ok: false, error: message }, status, request, env); }
+function assert(condition, message, status = 400) { if (!condition) throw new DriveError(message, status); }
+function requireTelegram(env) { assert(env.BOT_TOKEN && env.CHANNEL_DATA_ID, 'Worker is missing BOT_TOKEN or CHANNEL_DATA_ID.', 503); }
+function requireKv(env) { assert(env.FILES, 'Worker is missing the FILES KV binding.', 503); }
+function decodeId(value) { try { return decodeURIComponent(value); } catch { throw new DriveError('Invalid file id.'); } }
+function validId(id) { return typeof id === 'string' && /^[a-z0-9-]{8,64}$/i.test(id); }
+function itemKey(id) { return `${ITEM_PREFIX}${id}`; }
+function cleanName(value) {
+  assert(typeof value === 'string', 'A name is required.');
+  const name = value.trim().replace(/[\u0000-\u001f\\/]/g, '');
+  assert(name.length > 0 && name.length <= MAX_NAME_LENGTH, `Name must contain 1–${MAX_NAME_LENGTH} characters.`);
+  return name;
+}
+function optionalParent(value) { assert(value === null || value === undefined || validId(value), 'Invalid parent folder.'); return value || null; }
 
-        <!-- Vùng chứa Stats + DropZone nằm ngang -->
-        <div class="stats-dropzone-row" id="stats-dropzone-wrapper">
+// ─────────────────────────────────────────────────────────────────────────────
+// Authentication
+// ─────────────────────────────────────────────────────────────────────────────
 
-            <section class="stats-banner">
-                <div class="mini-stat-card">
-                    <div class="card-icon blue"><i class="fa-solid fa-file-shield"></i></div>
-                    <div class="card-info">
-                        <span class="stat-label">Tổng số tệp</span>
-                        <span class="stat-value total-files">0</span>
-                    </div>
-                </div>
-                <div class="mini-stat-card">
-                    <div class="card-icon green"><i class="fa-solid fa-weight-hanging"></i></div>
-                    <div class="card-info">
-                        <span class="stat-label">Tổng dung lượng</span>
-                        <span class="stat-value total-size">0 B</span>
-                    </div>
-                </div>
-                <div class="mini-stat-card">
-                    <div class="card-icon violet"><i class="fa-solid fa-bolt"></i></div>
-                    <div class="card-info">
-                        <span class="stat-label">Luồng song song</span>
-                        <span class="stat-value">3 Concurrency</span>
-                    </div>
-                </div>
-            </section>
+async function handleAuth(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return error('Body must be valid JSON.', 400, request, env); }
+  if (!env.ACCESS_PASSWORD && !env.PASSWORD_SHA256) return error('Password authentication is not configured.', 503, request, env);
+  if (!await passwordMatches(String(body?.password || ''), env)) return error('Invalid password.', 401, request, env);
+  const expiresIn = Math.max(300, Math.min(Number(env.SESSION_TTL_SECONDS) || 86_400, 604_800));
+  const token = await createSessionToken(env, expiresIn);
+  return json({ ok: true, token, expiresIn }, 200, request, env);
+}
 
-            <!-- ★ DROP ZONE KHỔNG LỒ MỚI -->
-            <div id="drop-zone-area" class="drop-zone-area">
-                <div class="drop-zone-inner" id="dropzone-hint">
-                    <i class="fa-solid fa-cloud-arrow-up drop-zone-icon"></i>
-                    <p class="drop-zone-title">Kéo & Thả tệp vào đây</p>
-                    <p class="drop-zone-sub">hoặc bấm để chọn tệp tải lên</p>
-                </div>
-            </div>
+async function isAuthenticated(request, env) {
+  // Matching old behavior: a deployment with no password remains open. Do not use
+  // this mode for a real drive; /auth intentionally refuses to create a session.
+  if (!env.ACCESS_PASSWORD && !env.PASSWORD_SHA256) return true;
+  const sessionToken = request.headers.get('X-Drive-Token') || bearerToken(request.headers.get('Authorization'));
+  if (sessionToken && await verifySessionToken(sessionToken, env)) return true;
+  // Compatibility for the old frontend, which sent the shared password verbatim.
+  const legacyAuthorization = request.headers.get('Authorization') || '';
+  return passwordMatches(legacyAuthorization, env);
+}
+function bearerToken(value) { const match = /^Bearer\s+(.+)$/i.exec(value || ''); return match ? match[1] : ''; }
+async function passwordMatches(candidate, env) {
+  if (!candidate) return false;
+  if (env.PASSWORD_SHA256) return timingSafeEqual(await sha256Hex(candidate), String(env.PASSWORD_SHA256).toLowerCase());
+  return timingSafeEqual(candidate, String(env.ACCESS_PASSWORD || ''));
+}
+function timingSafeEqual(a, b) { const left = encoder.encode(String(a)); const right = encoder.encode(String(b)); let difference = left.length ^ right.length; const longest = Math.max(left.length, right.length); for (let index = 0; index < longest; index += 1) difference |= (left[index] || 0) ^ (right[index] || 0); return difference === 0; }
+async function sha256Hex(value) { const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value))); return [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join(''); }
+function base64UrlEncode(value) { const bytes = typeof value === 'string' ? encoder.encode(value) : new Uint8Array(value); let binary = ''; bytes.forEach(byte => { binary += String.fromCharCode(byte); }); return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''); }
+function base64UrlDecode(value) { const normalized = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4); const binary = atob(normalized); return Uint8Array.from(binary, char => char.charCodeAt(0)); }
+async function hmacKey(env) { return crypto.subtle.importKey('raw', encoder.encode(env.SESSION_SECRET || env.ACCESS_PASSWORD || env.PASSWORD_SHA256), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']); }
+async function createSessionToken(env, expiresIn) { const payload = base64UrlEncode(JSON.stringify({ v: 1, exp: Math.floor(Date.now() / 1000) + expiresIn })); const signature = await crypto.subtle.sign('HMAC', await hmacKey(env), encoder.encode(payload)); return `${payload}.${base64UrlEncode(signature)}`; }
+async function verifySessionToken(token, env) {
+  try {
+    const [payload, signature, extra] = String(token).split('.'); if (!payload || !signature || extra) return false;
+    const valid = await crypto.subtle.verify('HMAC', await hmacKey(env), base64UrlDecode(signature), encoder.encode(payload)); if (!valid) return false;
+    const data = JSON.parse(decoder.decode(base64UrlDecode(payload))); return Number.isFinite(data.exp) && data.exp > Math.floor(Date.now() / 1000) && data.v === 1;
+  } catch { return false; }
+}
 
-        </div>
-    </div>
+// ─────────────────────────────────────────────────────────────────────────────
+// Telegram and legacy compatibility API
+// ─────────────────────────────────────────────────────────────────────────────
 
-    <!-- ╔═══════════════════════════════════════════════╗
-         ║  KHỐI CHÍNH GIỮA: TOOLBAR + DANH SÁCH TỆP     ║
-         ╚═══════════════════════════════════════════════╝ -->
-    <div class="file-list-center glass-panel">
+async function tgCall(env, method, payload) {
+  requireTelegram(env);
+  const response = await fetch(`${telegramApi(env.BOT_TOKEN)}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new DriveError(`Telegram request failed: ${data.description || response.status}.`, 502);
+  return data.result;
+}
+async function tgForm(env, method, formData) {
+  requireTelegram(env);
+  const response = await fetch(`${telegramApi(env.BOT_TOKEN)}/${method}`, { method: 'POST', body: formData });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new DriveError(`Telegram request failed: ${data.description || response.status}.`, 502);
+  return data.result;
+}
+async function tgFilePath(env, fileId) { const result = await tgCall(env, 'getFile', { file_id: fileId }); assert(result?.file_path, 'Telegram returned no file path.', 502); return result.file_path; }
+async function telegramBytes(env, fileId, range) { const path = await tgFilePath(env, fileId); const headers = range ? { Range: range } : undefined; const response = await fetch(telegramFile(env.BOT_TOKEN, path), { headers }); if (!response.ok) throw new DriveError('Could not retrieve file bytes from Telegram.', 502); return response; }
 
-        <div class="action-toolbar">
-            <div class="toolbar-left">
-                <h2 class="view-title" id="current-view-title">Bộ nhớ của tôi</h2>
-                <div class="bulk-actions-group" id="bulk-actions-group" style="display: none;">
-                    <span class="selected-count">Đã chọn 0 mục</span>
-                    <button class="btn btn-sm btn-danger" id="btn-bulk-delete">
-                        <i class="fa-solid fa-trash"></i> Xóa các mục đã chọn
-                    </button>
-                </div>
-            </div>
+async function legacyMetadataGet(request, env) {
+  assert(env.CHANNEL_META_ID, 'Worker is missing CHANNEL_META_ID for legacy metadata.', 503);
+  const chat = await tgCall(env, 'getChat', { chat_id: env.CHANNEL_META_ID }); const pinned = chat.pinned_message;
+  if (!pinned?.document?.file_id) return json({ ok: true, metadata: { version: 1, updated_at: null, files: [] } }, 200, request, env);
+  const response = await telegramBytes(env, pinned.document.file_id); const text = await response.text();
+  let metadata; try { metadata = JSON.parse(text); } catch { throw new DriveError('Legacy index.json is invalid.', 500); }
+  return json({ ok: true, metadata, meta_message_id: pinned.message_id }, 200, request, env);
+}
+async function legacyMetadataSave(request, env) {
+  assert(env.CHANNEL_META_ID, 'Worker is missing CHANNEL_META_ID for legacy metadata.', 503);
+  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); }
+  const metadata = body?.metadata; assert(metadata && Array.isArray(metadata.files), 'metadata.files must be an array.');
+  metadata.version ||= 1; metadata.updated_at = new Date().toISOString();
+  const serialized = JSON.stringify(metadata, null, 2);
+  // A Telegram Bot cannot later retrieve a document >=20 MB through getFile.
+  assert(encoder.encode(serialized).byteLength < TELEGRAM_CHUNK_LIMIT, 'Legacy metadata is too large. Migrate the frontend to the KV /files API.', 413);
+  let oldMessageId = null;
+  try { oldMessageId = (await tgCall(env, 'getChat', { chat_id: env.CHANNEL_META_ID })).pinned_message?.message_id || null; } catch { /* first install or missing pin */ }
+  const form = new FormData(); form.append('chat_id', env.CHANNEL_META_ID); form.append('document', new Blob([serialized], { type: 'application/json' }), 'index.json'); form.append('disable_notification', 'true');
+  const result = await tgForm(env, 'sendDocument', form); await tgCall(env, 'pinChatMessage', { chat_id: env.CHANNEL_META_ID, message_id: result.message_id, disable_notification: true });
+  if (oldMessageId && oldMessageId !== result.message_id) { try { await tgCall(env, 'deleteMessage', { chat_id: env.CHANNEL_META_ID, message_id: oldMessageId }); } catch { /* cleanup is best effort */ } }
+  return json({ ok: true, message_id: result.message_id, updated_at: metadata.updated_at }, 200, request, env);
+}
+async function legacyUpload(request, env) {
+  const form = await request.formData().catch(() => { throw new DriveError('Request must be multipart/form-data.'); }); const file = form.get('file');
+  assert(file && typeof file.arrayBuffer === 'function', 'Missing multipart field "file".'); assert(Number(file.size) > 0, 'Empty chunks are not allowed.'); assert(Number(file.size) <= TELEGRAM_CHUNK_LIMIT, 'Chunk exceeds the 19 MB Telegram-safe limit.', 413);
+  const filename = cleanName(String(form.get('filename') || file.name || 'chunk.bin')); const outbound = new FormData(); outbound.append('chat_id', env.CHANNEL_DATA_ID); outbound.append('document', file, filename); outbound.append('disable_notification', 'true');
+  const result = await tgForm(env, 'sendDocument', outbound); assert(result.document?.file_id, 'Telegram did not return a document.', 502);
+  return json({ ok: true, telegram_file_id: result.document.file_id, telegram_message_id: result.message_id, size: result.document.file_size }, 200, request, env);
+}
+async function legacyDelete(request, env) { let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } assert(Number.isInteger(Number(body?.message_id)), 'message_id is required.'); await tgCall(env, 'deleteMessage', { chat_id: env.CHANNEL_DATA_ID, message_id: Number(body.message_id) }); return json({ ok: true }, 200, request, env); }
+async function legacyDownload(request, env) {
+  const fileId = new URL(request.url).searchParams.get('file_id'); assert(fileId && fileId.length < 256, 'file_id is required.'); const telegramResponse = await telegramBytes(env, fileId, request.headers.get('Range'));
+  return binaryResponse(telegramResponse, request, env, { name: 'download', mime: telegramResponse.headers.get('Content-Type') || 'application/octet-stream', attachment: false });
+}
 
-            <div class="toolbar-right">
-                <div class="sort-select-wrapper">
-                    <select id="sort-select" class="select-custom">
-                        <option value="date-desc">Mới nhất trước</option>
-                        <option value="date-asc">Cũ nhất trước</option>
-                        <option value="name-asc">Tên từ A-Z</option>
-                        <option value="name-desc">Tên từ Z-A</option>
-                        <option value="size-desc">Kích thước lớn nhất</option>
-                        <option value="size-asc">Kích thước nhỏ nhất</option>
-                    </select>
-                </div>
+// ─────────────────────────────────────────────────────────────────────────────
+// KV metadata API
+// ─────────────────────────────────────────────────────────────────────────────
 
-                <button class="btn btn-sm btn-secondary" id="btn-empty-trash" style="display: none;">
-                    <i class="fa-solid fa-dumpster-fire"></i> Dọn sạch thùng rác
-                </button>
-                <button class="btn btn-sm btn-secondary" id="btn-clear-all" style="display: inline-flex;">
-                    <i class="fa-solid fa-triangle-exclamation"></i> Xóa toàn bộ KV
-                </button>
+async function getAllItems(env) {
+  requireKv(env); const items = []; let cursor; do { const page = await env.FILES.list({ prefix: ITEM_PREFIX, cursor, limit: 1_000 }); const pageItems = await Promise.all(page.keys.map(key => env.FILES.get(key.name, 'json'))); pageItems.forEach(item => { if (item?.id && (item.type === 'file' || item.type === 'folder')) items.push(item); }); cursor = page.list_complete ? undefined : page.cursor; } while (cursor && items.length < MAX_LIST_ITEMS);
+  if (cursor) throw new DriveError(`Drive has more than ${MAX_LIST_ITEMS} entries; add pagination before continuing.`, 413); return items;
+}
+async function getItem(env, id) { requireKv(env); assert(validId(id), 'Invalid file id.'); const item = await env.FILES.get(itemKey(id), 'json'); assert(item, 'File not found.', 404); return item; }
+async function ensureParent(env, parentId, items = null) { if (!parentId) return; const parent = items ? items.find(item => item.id === parentId) : await getItem(env, parentId); assert(parent?.type === 'folder' && !parent.trashed, 'Destination folder is unavailable.'); }
+function publicItem(item) { return { id: item.id, type: item.type, name: item.name, parentId: item.parentId || null, mime: item.mime || '', size: Number(item.size) || 0, starred: Boolean(item.starred), trashed: Boolean(item.trashed), createdAt: item.createdAt, updatedAt: item.updatedAt }; }
 
-                <div class="view-toggle-buttons">
-                    <button class="btn-toggle active" id="view-list-toggle" title="Xem dạng danh sách">
-                        <i class="fa-solid fa-list"></i>
-                    </button>
-                    <button class="btn-toggle" id="view-grid-toggle" title="Xem dạng lưới ô vuông">
-                        <i class="fa-solid fa-grid-2"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
+async function listFiles(url, request, env) {
+  const scope = ['files', 'recent', 'starred', 'trash'].includes(url.searchParams.get('scope')) ? url.searchParams.get('scope') : 'files'; const parentId = optionalParent(url.searchParams.get('parentId')); const query = String(url.searchParams.get('q') || '').trim().toLocaleLowerCase(); let all = await getAllItems(env);
+  // One-time, non-destructive migration for installations that used index.json
+  // before the KV API existed. The original index and all legacy endpoints stay.
+  if (!all.length) all = await importLegacyIndexIntoKv(env);
+  const active = all.filter(item => !item.trashed); let items;
+  if (scope === 'trash') items = all.filter(item => item.trashed); else if (scope === 'starred') items = active.filter(item => item.starred); else if (scope === 'recent') items = active; else items = active.filter(item => (item.parentId || null) === parentId);
+  if (query) items = items.filter(item => item.name.toLocaleLowerCase().includes(query));
+  items.sort((a, b) => scope === 'files' && a.type !== b.type ? (a.type === 'folder' ? -1 : 1) : scope === 'files' ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) : String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const breadcrumbs = []; let crumbId = parentId; const itemById = new Map(all.map(item => [item.id, item])); for (let guard = 0; crumbId && guard < 32; guard += 1) { const folder = itemById.get(crumbId); if (!folder || folder.type !== 'folder') break; breadcrumbs.unshift({ id: folder.id, name: folder.name }); crumbId = folder.parentId; }
+  const stats = { bytes: active.filter(item => item.type === 'file').reduce((sum, item) => sum + (Number(item.size) || 0), 0), count: active.length };
+  return json({ ok: true, items: items.map(publicItem), breadcrumbs, stats }, 200, request, env);
+}
+async function importLegacyIndexIntoKv(env) {
+  if (!env.CHANNEL_META_ID) return [];
+  try {
+    const chat = await tgCall(env, 'getChat', { chat_id: env.CHANNEL_META_ID });
+    if (!chat.pinned_message?.document?.file_id) return [];
+    const text = await (await telegramBytes(env, chat.pinned_message.document.file_id)).text();
+    const files = JSON.parse(text)?.files; if (!Array.isArray(files)) return [];
+    const migrated = [];
+    for (const legacy of files.slice(0, MAX_LIST_ITEMS)) {
+      try {
+        const name = cleanName(legacy?.name); const size = Number(legacy?.size); if (!Number.isFinite(size) || size <= 0) continue;
+        const id = validId(legacy?.id) ? legacy.id : crypto.randomUUID();
+        const parts = sanitizeParts((legacy.parts || []).map((part, index) => ({ fileId: part.fileId || part.file_id || part.telegram_file_id, messageId: part.messageId || part.message_id || part.telegram_message_id, size: part.size, index })), size);
+        const createdAt = typeof legacy.createdAt === 'string' ? legacy.createdAt : (typeof legacy.created_at === 'string' ? legacy.created_at : new Date().toISOString());
+        const item = { id, type: 'file', name, parentId: null, mime: String(legacy.mime || legacy.mime_type || 'application/octet-stream').slice(0, 150), size, parts, starred: false, trashed: false, createdAt, updatedAt: createdAt };
+        await env.FILES.put(itemKey(item.id), JSON.stringify(item)); migrated.push(item);
+      } catch { /* Ignore only malformed legacy entries; valid files continue migrating. */ }
+    }
+    return migrated;
+  } catch (cause) { console.warn('Legacy metadata migration skipped:', cause); return []; }
+}
+async function createFolder(request, env) {
+  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } const name = cleanName(body?.name); const parentId = optionalParent(body?.parentId); await ensureParent(env, parentId); const now = new Date().toISOString(); const item = { id: crypto.randomUUID(), type: 'folder', name, parentId, size: 0, starred: false, trashed: false, createdAt: now, updatedAt: now }; await env.FILES.put(itemKey(item.id), JSON.stringify(item)); return json({ ok: true, item: publicItem(item) }, 201, request, env);
+}
+function sanitizeParts(rawParts, expectedSize) {
+  assert(Array.isArray(rawParts) && rawParts.length > 0 && rawParts.length <= 5_000, 'A file needs between 1 and 5,000 uploaded parts.'); const parts = rawParts.map((part, index) => { assert(typeof part?.fileId === 'string' && part.fileId.length < 256, `Part ${index + 1} is invalid.`); assert(Number.isInteger(Number(part?.messageId)), `Part ${index + 1} is missing its Telegram message id.`); const size = Number(part.size); assert(Number.isFinite(size) && size > 0 && size <= TELEGRAM_CHUNK_LIMIT, `Part ${index + 1} has an invalid size.`); return { fileId: part.fileId, messageId: Number(part.messageId), size, index: Number.isInteger(Number(part.index)) ? Number(part.index) : index }; }).sort((a, b) => a.index - b.index); assert(parts.reduce((sum, part) => sum + part.size, 0) >= Number(expectedSize) * .98, 'Uploaded parts do not match the reported file size.'); return parts;
+}
+async function createFileRecord(request, env) {
+  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } const name = cleanName(body?.name); const parentId = optionalParent(body?.parentId); const size = Number(body?.size); assert(Number.isFinite(size) && size > 0, 'File size must be greater than zero.'); await ensureParent(env, parentId); const now = new Date().toISOString(); const item = { id: crypto.randomUUID(), type: 'file', name, parentId, mime: typeof body?.mime === 'string' ? body.mime.slice(0, 150) : 'application/octet-stream', size, parts: sanitizeParts(body?.parts, size), starred: false, trashed: false, createdAt: now, updatedAt: now }; await env.FILES.put(itemKey(item.id), JSON.stringify(item)); return json({ ok: true, item: publicItem(item) }, 201, request, env);
+}
+async function updateFile(id, request, env) {
+  let body; try { body = await request.json(); } catch { throw new DriveError('Body must be valid JSON.'); } const item = await getItem(env, id); const operation = body?.operation;
+  if (operation === 'rename') item.name = cleanName(body.name);
+  else if (operation === 'star') { assert(!item.trashed, 'Restore the item before starring it.', 409); item.starred = Boolean(body.starred); }
+  else if (operation === 'move') { const parentId = optionalParent(body.parentId); const all = await getAllItems(env); await ensureParent(env, parentId, all); assert(item.type !== 'folder' || !wouldCreateCycle(item.id, parentId, new Map(all.map(entry => [entry.id, entry]))), 'A folder cannot be moved into itself.'); item.parentId = parentId; }
+  else if (operation === 'trash' || operation === 'restore') { const trashed = operation === 'trash'; const all = await getAllItems(env); const tree = descendantsOf(item, all); const now = new Date().toISOString(); await Promise.all(tree.map(entry => { entry.trashed = trashed; entry.updatedAt = now; return env.FILES.put(itemKey(entry.id), JSON.stringify(entry)); })); return json({ ok: true, item: publicItem({ ...item, trashed }) }, 200, request, env); }
+  else throw new DriveError('Unknown file operation.');
+  item.updatedAt = new Date().toISOString(); await env.FILES.put(itemKey(item.id), JSON.stringify(item)); return json({ ok: true, item: publicItem(item) }, 200, request, env);
+}
+function descendantsOf(root, all) { const found = [root]; const byParent = new Map(); all.forEach(item => { const list = byParent.get(item.parentId || '') || []; list.push(item); byParent.set(item.parentId || '', list); }); for (let index = 0; index < found.length; index += 1) (byParent.get(found[index].id) || []).forEach(child => found.push(child)); return found; }
+function wouldCreateCycle(id, parentId, byId) { let current = parentId; for (let guard = 0; current && guard < 64; guard += 1) { if (current === id) return true; current = byId.get(current)?.parentId; } return false; }
+async function deleteFile(id, request, env, ctx) {
+  const item = await getItem(env, id); assert(item.trashed, 'Move the item to trash before permanently deleting it.', 409); const all = await getAllItems(env); const tree = descendantsOf(item, all); await Promise.all(tree.map(entry => env.FILES.delete(itemKey(entry.id))));
+  // Data deletion is best effort. KV is removed first, so a failed Telegram delete
+  // never leaves a downloadable index entry. Workers may finish the cleanup later.
+  ctx.waitUntil(Promise.allSettled(tree.filter(entry => entry.type === 'file').flatMap(entry => (entry.parts || []).map(part => tgCall(env, 'deleteMessage', { chat_id: env.CHANNEL_DATA_ID, message_id: part.messageId })))).then(() => undefined));
+  return json({ ok: true }, 200, request, env);
+}
 
-        <div class="data-view-scroller touch-scroll" id="data-view-scroller" role="main" aria-label="Danh sách tệp tin">
+// ─────────────────────────────────────────────────────────────────────────────
+// Private file streaming (one or many Telegram chunks)
+// ─────────────────────────────────────────────────────────────────────────────
 
-            <div id="file-list-view" class="file-list-view-container table-mobile-wrap">
-                <table class="modern-table">
-                    <thead>
-                        <tr>
-                            <th width="40" style="text-align: center;">
-                                <input type="checkbox" id="th-check-all" class="custom-checkbox">
-                            </th>
-                            <th width="60" style="text-align: center;">STT</th>
-                            <th>Tên tệp tin</th>
-                            <th width="140">Kích thước</th>
-                            <th width="180">Ngày tạo</th>
-                            <th width="60" style="text-align: center;">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody id="main-files-table-body">
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="file-grid-view" class="file-grid-view-container" style="display: none;">
-            </div>
-
-            <div class="empty-state-view" id="empty-state-view" style="display: none;">
-                <div class="empty-icon-box">
-                    <i class="fa-solid fa-folder-open"></i>
-                </div>
-                <h3>Thư mục này trống rỗng</h3>
-                <p>Hãy kéo thả tệp vào đây hoặc bấm nút "Tải lên mới" để bắt đầu lưu trữ.</p>
-            </div>
-        </div>
-
-        <section id="internal-logs-section" class="internal-logs-panel" style="display: none;">
-            <div class="panel-header">
-                <h3><i class="fa-solid fa-terminal"></i> Console Log thời gian thực</h3>
-                <button class="btn btn-sm btn-secondary" onclick="document.querySelector('.log-list').innerHTML=''"><i class="fa-solid fa-broom"></i> Xóa log</button>
-            </div>
-            <div class="log-terminal-box">
-                <ul class="log-list"></ul>
-            </div>
-        </section>
-
-        <section id="file-details-section" class="file-details-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h3><i class="fa-solid fa-circle-info"></i> Cấu trúc phân mảnh tệp dữ liệu</h3>
-                <button class="close-drawer-btn" id="close-details-btn">&times;</button>
-            </div>
-            <div class="drawer-body">
-                <div class="meta-profile">
-                    <div class="meta-file-icon" id="detail-icon-box"><i class="fa-solid fa-file"></i></div>
-                    <h4 id="detail-title-text" class="detail-name">Tên_file.zip</h4>
-                </div>
-                <div class="meta-grid-info">
-                    <p><strong>Mã định danh UUID:</strong> <span class="detail-id">-</span></p>
-                    <p><strong>Tổng kích thước:</strong> <span class="detail-size">-</span></p>
-                    <p><strong>Số lượng Part cắt mảnh:</strong> <span class="detail-parts">-</span></p>
-                    <p><strong>Trạng thái Endpoint:</strong> <span class="detail-status">-</span></p>
-                </div>
-                <div class="table-wrapper-mini">
-                    <table class="mini-table">
-                        <thead>
-                            <tr>
-                                <th width="70">Part STT</th>
-                                <th>Kích thước Part</th>
-                                <th>Telegram File ID</th>
-                            </tr>
-                        </thead>
-                        <tbody class="part-table-body">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-    </div><!-- /.file-list-center -->
-
-    <!-- ★ MÀNG ĐEN MỜ CHO MOBILE DRAWER (JS sẽ điều khiển) -->
-    <div class="drawer-overlay" id="sidebar-overlay"></div>
-
-</main>
-    </section>
-
-    <div class="mini-progress-panel" id="download-manager-panel" style="display: none;">
-        <div class="progress-panel-header">
-            <span class="panel-title-text" id="progress-panel-title"><i class="fa-solid fa-cloud-arrow-up"></i> Đang xử lý truyền tải...</span>
-            <div class="panel-header-actions">
-                <button class="panel-action-btn" id="btn-toggle-panel-minimize" title="Thu nhỏ / Mở rộng"><i class="fa-solid fa-chevron-down"></i></button>
-            </div>
-        </div>
-        <div class="progress-panel-body" id="progress-panel-body">
-            <div class="active-process-item">
-                <div class="process-file-info">
-                    <span class="process-filename" id="progress-file-name">Ten_file_dang_chay.mp4</span>
-                    <span class="process-speed-text" id="progress-speed">0 KB/s</span>
-                </div>
-                <div class="process-status-row">
-                    <span class="process-status-msg" id="download-status">Đang chuẩn bị luồng...</span>
-                    <span class="process-parts-counter" id="progress-parts-count">Part: 0/0</span>
-                </div>
-                <div class="liquid-progress-container">
-                    <div class="liquid-progress-bar" id="download-progress-bar" style="width: 0%;"></div>
-                </div>
-                <div class="process-controls-row">
-                    <button class="btn-ctrl-action" id="btn-process-pause" title="Tạm dừng tiến trình"><i class="fa-solid fa-pause"></i> Tạm dừng</button>
-                    <button class="btn-ctrl-action" id="btn-process-resume" style="display: none;" title="Tiếp tục tiến trình"><i class="fa-solid fa-play"></i> Tiếp tục</button>
-                    <button class="btn-ctrl-action danger" id="btn-process-cancel" title="Hủy bỏ ngay"><i class="fa-solid fa-xmark"></i> Hủy bỏ</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal" id="preview-modal" style="display:none;">
-        <div class="modal-content-wrapper">
-            <div class="modal-header-bar">
-                <h3 class="modal-title-text" id="preview-title">Xem trước tài liệu</h3>
-                <button class="close-modal-btn" onclick="closePreview()">&times;</button>
-            </div>
-            <div class="modal-body-content" id="preview-body">
-                </div>
-        </div>
-    </div>
-
-    <div class="custom-dropdown-menu" id="custom-context-menu" style="display: none;">
-        <button class="dropdown-menu-item" id="ctx-preview">
-            <i class="fa-solid fa-eye"></i> <span>Xem dữ liệu</span>
-        </button>
-        <button class="dropdown-menu-item" id="ctx-details">
-            <i class="fa-solid fa-circle-nodes"></i> <span>Xem cấu trúc mảnh</span>
-        </button>
-        <button class="dropdown-menu-item" id="ctx-download">
-            <i class="fa-solid fa-circle-arrow-down"></i> <span>Tải xuống máy</span>
-        </button>
-        <button class="dropdown-menu-item" id="ctx-copy">
-            <i class="fa-solid fa-share-nodes"></i> <span>Sao chép liên kết nhanh</span>
-        </button>
-        <div class="dropdown-divider"></div>
-        <button class="dropdown-menu-item danger" id="ctx-delete">
-            <i class="fa-solid fa-trash-can"></i> <span>Xóa tệp tin</span>
-        </button>
-    </div>
-
-    <div class="toast-container" id="toast-container"></div>
-
-    <script src="https://cdn.jsdelivr.net/npm/web-streams-polyfill@2.0.2/dist/ponyfill.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.3/StreamSaver.min.js"></script>
-    <script src="app.js"></script>
-</body>
-</html>
+function parseRange(header, total) {
+  if (!header) return { start: 0, end: total - 1, partial: false }; const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim()); if (!match) throw new DriveError('Invalid byte range.', 416); let start; let end;
+  if (!match[1]) { const count = Number(match[2]); assert(Number.isInteger(count) && count > 0, 'Invalid byte range.', 416); start = Math.max(0, total - count); end = total - 1; } else { start = Number(match[1]); end = match[2] ? Number(match[2]) : total - 1; }
+  assert(Number.isInteger(start) && Number.isInteger(end) && start >= 0 && start <= end && start < total, 'Requested range is unavailable.', 416); return { start, end: Math.min(end, total - 1), partial: true };
+}
+function contentDisposition(name) { return `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(name)}`; }
+function binaryResponse(telegramResponse, request, env, details) {
+  const headers = new Headers({ 'Content-Type': details.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' }); const length = telegramResponse.headers.get('Content-Length'); const range = telegramResponse.headers.get('Content-Range'); if (length) headers.set('Content-Length', length); if (range) headers.set('Content-Range', range); if (details.attachment) headers.set('Content-Disposition', contentDisposition(details.name)); return withCors(new Response(telegramResponse.body, { status: telegramResponse.status, headers }), request, env);
+}
+async function streamFile(id, request, env) {
+  const item = await getItem(env, id); assert(item.type === 'file' && !item.trashed, 'File not found.', 404); const parts = Array.isArray(item.parts) ? [...item.parts].sort((a, b) => Number(a.index) - Number(b.index)) : []; assert(parts.length, 'This file has no uploaded parts.', 500); const total = parts.reduce((sum, part) => sum + Number(part.size || 0), 0); assert(total > 0, 'This file has an invalid size.', 500); const range = parseRange(request.headers.get('Range'), total); const selected = []; let offset = 0;
+  for (const part of parts) { const end = offset + part.size - 1; if (end >= range.start && offset <= range.end) selected.push({ part, start: Math.max(0, range.start - offset), end: Math.min(part.size - 1, range.end - offset) }); offset += part.size; }
+  let cancelled = false;
+  const stream = new ReadableStream({
+    async start(controller) { try { for (const selectedPart of selected) { if (cancelled) break; const fullPart = selectedPart.start === 0 && selectedPart.end === selectedPart.part.size - 1; const response = await telegramBytes(env, selectedPart.part.fileId, fullPart ? null : `bytes=${selectedPart.start}-${selectedPart.end}`); const reader = response.body.getReader(); try { while (!cancelled) { const { done, value } = await reader.read(); if (done) break; controller.enqueue(value); } } finally { reader.releaseLock(); } } controller.close(); } catch (cause) { controller.error(cause); } },
+    cancel() { cancelled = true; }
+  });
+  const length = range.end - range.start + 1; const headers = new Headers({ 'Content-Type': item.mime || 'application/octet-stream', 'Content-Length': String(length), 'Content-Disposition': contentDisposition(item.name), 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' }); if (range.partial) headers.set('Content-Range', `bytes ${range.start}-${range.end}/${total}`);
+  return withCors(new Response(stream, { status: range.partial ? 206 : 200, headers }), request, env);
+}
