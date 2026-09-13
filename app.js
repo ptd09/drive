@@ -10,7 +10,7 @@
   // ───────────────────────────────────────────────────────────────────────
   const API_URL = 'https://drive-worker.phamdatt140613.workers.dev';
 
-  const CHUNK_SIZE = 15 * 1024 * 1024;   // Lowered to 15 MB — safer against Cloudflare Free CPU/memory limits.
+  const CHUNK_SIZE = 50 * 1024 * 1024;   
   const INTER_CHUNK_DELAY_MS = 1_200;    // Pace uploads to avoid Telegram flood control (429).
   const MAX_RETRY = 5;                   // 2s, 4s, 8s, 16s, 32s.
   const RETRY_BASE_MS = 2_000;
