@@ -1,24 +1,39 @@
-/* Telegram Drive frontend (v3) — no framework or build step required. */
+/* Telegram Drive frontend (v4) — no framework or build step required. */
 (() => {
   'use strict';
 
   // ───────────────────────────────────────────────────────────────────────
-  // 1) FIXED WORKER — no URL input/config is exposed in the UI anymore.
-  //    The app always talks to this single Worker. Any #apiUrl / settings
-  //    elements still present in index.html are hidden at boot (see
-  //    hideWorkerUrlConfig()) instead of requiring an HTML edit.
+  // FIXED WORKER — the app always talks to this single Worker; it proxies
+  // file bytes to the Render backend internally (bypassing Telegram Bot
+  // API's 20 MB download / 50 MB upload ceilings). app.js never calls
+  // Render directly, so no URL config is ever exposed in the UI.
   // ───────────────────────────────────────────────────────────────────────
   const API_URL = 'https://drive-worker.phamdatt140613.workers.dev';
 
-  const CHUNK_SIZE = 50 * 1024 * 1024;   
-  const INTER_CHUNK_DELAY_MS = 1_200;    // Pace uploads to avoid Telegram flood control (429).
+  const CHUNK_SIZE = 50 * 1024 * 1024;
+  const UPLOAD_CONCURRENCY = 2;          // Two parallel chunk uploads per file.
+  const INTER_CHUNK_DELAY_MS = 1_200;    // Pace batches to avoid Telegram flood control (429).
   const MAX_RETRY = 5;                   // 2s, 4s, 8s, 16s, 32s.
   const RETRY_BASE_MS = 2_000;
+  const LIST_CACHE_TTL_MS = 150_000;     // 2.5 min — trims Cloudflare KV reads, makes folder switches instant.
+  const LIST_CACHE_PREFIX = 'telegramDrive.listCache.';
+  const TEXT_PREVIEW_LINE_LIMIT = 5_000; // Above this, skip per-line numbering to avoid a huge DOM.
 
   const KEYS = { lang: 'telegramDrive.lang', theme: 'telegramDrive.theme', view: 'telegramDrive.view', token: 'telegramDrive.session' };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Extension → MIME fallback. Used only when both the server's Content-Type
+  // and the item's stored mime are missing/generic — see fetchItemBlob().
+  const EXT_MIME = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+    mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
+    txt: 'text/plain', json: 'application/json', js: 'text/javascript', py: 'text/x-python', cpp: 'text/x-c++src',
+    html: 'text/html', css: 'text/css', md: 'text/markdown', log: 'text/plain'
+  };
+  const LANGUAGE_LABEL = { js: 'JavaScript', py: 'Python', cpp: 'C++', html: 'HTML', css: 'CSS', json: 'JSON', md: 'Markdown', log: 'Log', txt: 'Text' };
 
   const COPY = {
     vi: {
@@ -28,11 +43,11 @@
       uploads: 'Đang tải lên', welcome: 'Chào mừng trở lại', loginIntro: 'Nhập mật khẩu để mở không gian tệp riêng tư của bạn.', password: 'Mật khẩu truy cập', passwordPlaceholder: 'Nhập mật khẩu', signIn: 'Đăng nhập', loginNote: 'Mật khẩu không được lưu trong trình duyệt.',
       cancel: 'Hủy', save: 'Lưu thay đổi', root: 'Tệp của tôi', folder: 'Thư mục', file: 'Tệp', download: 'Tải xuống', preview: 'Xem trước', rename: 'Đổi tên', removeStar: 'Bỏ gắn sao', addStar: 'Gắn sao', moveToTrash: 'Chuyển vào thùng rác', restore: 'Khôi phục', deleteForever: 'Xóa vĩnh viễn',
       newFolderTitle: 'Thư mục mới', newFolderLabel: 'Tên thư mục', newFolderHelp: 'Thư mục sẽ được tạo tại vị trí hiện tại.', renameTitle: 'Đổi tên', renameLabel: 'Tên mới', saveName: 'Lưu tên', uploading: 'Đang tải lên', preparing: 'Đang chuẩn bị', uploadingPart: 'Đang tải phần {current}/{total}', waitingRetry: 'Lỗi mạng, thử lại sau {seconds}s ({attempt}/{max})', waitingFlood: 'Telegram giới hạn tốc độ, đợi {seconds}s...', completed: 'Hoàn tất', uploadSuccess: 'Đã tải “{name}” lên thành công.',
-      folderCreated: 'Đã tạo thư mục “{name}”.', renamed: 'Đã đổi tên.', movedToTrash: 'Đã chuyển vào thùng rác.', restored: 'Đã khôi phục.', deleted: 'Đã xóa vĩnh viễn.', downloaded: 'Đang chuẩn bị tệp tải xuống…', loadingPreview: 'Đang tải xem trước…', previewFailed: 'Không thể xem trước tệp này.', wrongPassword: 'Mật khẩu không đúng hoặc phiên đã hết hạn.', networkError: 'Không thể kết nối đến máy chủ. Hãy kiểm tra mạng của bạn.', confirmDelete: 'Xóa vĩnh viễn “{name}”? Hành động này không thể hoàn tác.', confirmSignOut: 'Bạn có muốn đăng xuất khỏi Telegram Drive?', noSearch: 'Không tìm thấy tệp phù hợp', noSearchDesc: 'Hãy thử từ khóa khác hoặc quay lại thư mục của bạn.', loadError: 'Không thể tải danh sách tệp.', uploadingToRoot: 'Bạn đang ở mục đặc biệt; tệp sẽ được tải lên thư mục gốc.', signOut: 'Đăng xuất', requestFailed: 'Thao tác không thành công.'
+      folderCreated: 'Đã tạo thư mục “{name}”.', renamed: 'Đã đổi tên.', movedToTrash: 'Đã chuyển vào thùng rác.', restored: 'Đã khôi phục.', deleted: 'Đã xóa vĩnh viễn.', downloaded: 'Đang chuẩn bị tệp tải xuống…', loadingPreview: 'Đang tải xem trước…', previewFailed: 'Không thể xem trước tệp này.', previewTooBig: 'Không thể phát tệp này (dữ liệu trả về trống hoặc lỗi định dạng).', wrongPassword: 'Mật khẩu không đúng hoặc phiên đã hết hạn.', networkError: 'Không thể kết nối đến máy chủ. Hãy kiểm tra mạng của bạn.', confirmDelete: 'Xóa vĩnh viễn “{name}”? Hành động này không thể hoàn tác.', confirmSignOut: 'Bạn có muốn đăng xuất khỏi Telegram Drive?', noSearch: 'Không tìm thấy tệp phù hợp', noSearchDesc: 'Hãy thử từ khóa khác hoặc quay lại thư mục của bạn.', loadError: 'Không thể tải danh sách tệp.', uploadingToRoot: 'Bạn đang ở mục đặc biệt; tệp sẽ được tải lên thư mục gốc.', signOut: 'Đăng xuất', requestFailed: 'Thao tác không thành công.', copy: 'Sao chép', copied: 'Đã chép!', truncatedNotice: 'Tệp lớn — đã tắt đánh số dòng để tối ưu hiệu năng.'
     },
     en: {
       upload: 'Upload files', myFiles: 'My files', recent: 'Recent', starred: 'Starred', trash: 'Trash', storage: 'Storage', storageCaption: 'Files are privately stored on Telegram', settings: 'Connection settings', toggleTheme: 'Toggle theme', searchPlaceholder: 'Search in Drive', newFolder: 'New folder', viewMode: 'View mode', dropTitle: 'Drop files to upload', dropDescription: 'Files are chunked and privately stored on Telegram.', name: 'Name', modified: 'Last modified', size: 'Size', emptyTitle: 'This folder is empty', emptyDescription: 'Drop files here or choose Upload files to get started.', uploads: 'Uploads', welcome: 'Welcome back', loginIntro: 'Enter your password to access your private file space.', password: 'Access password', passwordPlaceholder: 'Enter password', signIn: 'Sign in', loginNote: 'Your password is never stored in this browser.',
-      cancel: 'Cancel', save: 'Save changes', root: 'My files', folder: 'Folder', file: 'File', download: 'Download', preview: 'Preview', rename: 'Rename', removeStar: 'Remove star', addStar: 'Add star', moveToTrash: 'Move to trash', restore: 'Restore', deleteForever: 'Delete forever', newFolderTitle: 'New folder', newFolderLabel: 'Folder name', newFolderHelp: 'The folder will be created in the current location.', renameTitle: 'Rename', renameLabel: 'New name', saveName: 'Save name', uploading: 'Uploading', preparing: 'Preparing', uploadingPart: 'Uploading part {current}/{total}', waitingRetry: 'Network error, retrying in {seconds}s ({attempt}/{max})', waitingFlood: 'Telegram rate limit hit, waiting {seconds}s...', completed: 'Completed', uploadSuccess: '“{name}” uploaded successfully.', folderCreated: 'Folder “{name}” created.', renamed: 'Name updated.', movedToTrash: 'Moved to trash.', restored: 'Restored.', deleted: 'Permanently deleted.', downloaded: 'Preparing your download…', loadingPreview: 'Loading preview…', previewFailed: 'This file could not be previewed.', wrongPassword: 'Incorrect password or expired session.', networkError: 'Could not reach the server. Check your connection.', confirmDelete: 'Permanently delete “{name}”? This cannot be undone.', confirmSignOut: 'Sign out of Telegram Drive?', noSearch: 'No matching files', noSearchDesc: 'Try another keyword or return to your files.', loadError: 'Unable to load files.', uploadingToRoot: 'You are in a special view; files will upload to the root folder.', signOut: 'Sign out', requestFailed: 'The action could not be completed.'
+      cancel: 'Cancel', save: 'Save changes', root: 'My files', folder: 'Folder', file: 'File', download: 'Download', preview: 'Preview', rename: 'Rename', removeStar: 'Remove star', addStar: 'Add star', moveToTrash: 'Move to trash', restore: 'Restore', deleteForever: 'Delete forever', newFolderTitle: 'New folder', newFolderLabel: 'Folder name', newFolderHelp: 'The folder will be created in the current location.', renameTitle: 'Rename', renameLabel: 'New name', saveName: 'Save name', uploading: 'Uploading', preparing: 'Preparing', uploadingPart: 'Uploading part {current}/{total}', waitingRetry: 'Network error, retrying in {seconds}s ({attempt}/{max})', waitingFlood: 'Telegram rate limit hit, waiting {seconds}s...', completed: 'Completed', uploadSuccess: '“{name}” uploaded successfully.', folderCreated: 'Folder “{name}” created.', renamed: 'Name updated.', movedToTrash: 'Moved to trash.', restored: 'Restored.', deleted: 'Permanently deleted.', downloaded: 'Preparing your download…', loadingPreview: 'Loading preview…', previewFailed: 'This file could not be previewed.', previewTooBig: 'This file could not be played (empty or malformed response).', wrongPassword: 'Incorrect password or expired session.', networkError: 'Could not reach the server. Check your connection.', confirmDelete: 'Permanently delete “{name}”? This cannot be undone.', confirmSignOut: 'Sign out of Telegram Drive?', noSearch: 'No matching files', noSearchDesc: 'Try another keyword or return to your files.', loadError: 'Unable to load files.', uploadingToRoot: 'You are in a special view; files will upload to the root folder.', signOut: 'Sign out', requestFailed: 'The action could not be completed.', copy: 'Copy', copied: 'Copied!', truncatedNotice: 'Large file — line numbers disabled for performance.'
     }
   };
 
@@ -49,6 +64,23 @@
   function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
   function formatBytes(bytes = 0) { if (!Number.isFinite(Number(bytes)) || Number(bytes) <= 0) return '0 B'; const units = ['B', 'KB', 'MB', 'GB', 'TB']; const index = Math.min(Math.floor(Math.log(Number(bytes)) / Math.log(1024)), units.length - 1); return `${(Number(bytes) / 1024 ** index).toFixed(index ? (Number(bytes) / 1024 ** index >= 10 ? 0 : 1) : 0)} ${units[index]}`; }
   function formatDate(date) { try { return new Intl.DateTimeFormat(state.lang === 'vi' ? 'vi-VN' : 'en-US', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date)); } catch { return '—'; } }
+  function fileExtension(name) { const match = /\.([a-z0-9]+)$/i.exec(name || ''); return match ? match[1].toLowerCase() : ''; }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // sessionStorage list cache — cuts Cloudflare KV reads and makes switching
+  // folders instant (0ms) as long as the cached page is fresh. Any mutation
+  // (upload/rename/star/trash/restore/delete/new folder) invalidates it.
+  // ───────────────────────────────────────────────────────────────────────
+  function listCacheKey() { return `${LIST_CACHE_PREFIX}${state.scope}|${state.parentId || ''}|${state.query}`; }
+  function readListCache(key) {
+    try {
+      const raw = sessionStorage.getItem(key); if (!raw) return null;
+      const cached = JSON.parse(raw); if (Date.now() - cached.savedAt > LIST_CACHE_TTL_MS) return null;
+      return cached;
+    } catch { return null; }
+  }
+  function writeListCache(key, data) { try { sessionStorage.setItem(key, JSON.stringify({ ...data, savedAt: Date.now() })); } catch { /* Storage full/unavailable — caching is best-effort. */ } }
+  function clearListCache() { try { Object.keys(sessionStorage).filter(key => key.startsWith(LIST_CACHE_PREFIX)).forEach(key => sessionStorage.removeItem(key)); } catch { /* noop */ } }
 
   async function api(path, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -62,8 +94,13 @@
     return payload ?? response;
   }
 
-  async function loadFiles() {
+  async function loadFiles({ force = false } = {}) {
     if (!state.token || state.isLoading) return;
+    const cacheKey = listCacheKey();
+    if (!force) {
+      const cached = readListCache(cacheKey);
+      if (cached) { state.items = cached.items; state.breadcrumbs = cached.breadcrumbs; state.stats = cached.stats; render(); return; }
+    }
     state.isLoading = true;
     const params = new URLSearchParams({ scope: state.scope });
     if (state.scope === 'files' && state.parentId) params.set('parentId', state.parentId);
@@ -73,12 +110,14 @@
       state.items = Array.isArray(data.items) ? data.items : [];
       state.breadcrumbs = Array.isArray(data.breadcrumbs) ? data.breadcrumbs : [];
       state.stats = data.stats || state.stats;
+      writeListCache(cacheKey, { items: state.items, breadcrumbs: state.breadcrumbs, stats: state.stats });
       render();
     } catch (error) {
       if (error.status === 401) { handleExpiredSession(); return; }
       state.items = []; render(); toast(t('loadError'), 'error');
     } finally { state.isLoading = false; }
   }
+  async function refreshFiles() { clearListCache(); await loadFiles({ force: true }); }
 
   function render() { applyTranslations(); renderNavigation(); renderBreadcrumbs(); renderFiles(); renderStorage(); }
   function applyTranslations() {
@@ -104,28 +143,33 @@
     $('#storageBar').style.width = `${Math.max(7, Math.min(100, Math.log10(Number(state.stats.bytes || 1) + 10) * 10))}%`;
   }
   function renderBreadcrumbs() {
-    const container = $('#breadcrumbs'); container.replaceChildren();
-    if (state.scope !== 'files') { container.append(el('span', 'crumb', t(state.scope))); return; }
+    const container = $('#breadcrumbs'); const fragment = document.createDocumentFragment();
+    if (state.scope !== 'files') { fragment.append(el('span', 'crumb', t(state.scope))); container.replaceChildren(fragment); return; }
     const crumbs = [{ id: null, name: t('root') }, ...state.breadcrumbs];
     crumbs.forEach((crumb, index) => {
-      if (index) { const separator = icon('chevron'); separator.classList.add('crumb-separator'); container.append(separator); }
+      if (index) { const separator = icon('chevron'); separator.classList.add('crumb-separator'); fragment.append(separator); }
       const button = el('button', 'crumb', crumb.name); button.type = 'button'; button.disabled = index === crumbs.length - 1; button.prepend(icon(index ? 'folder' : 'drive'));
-      button.addEventListener('click', () => { state.parentId = crumb.id; loadFiles(); }); container.append(button);
+      button.addEventListener('click', () => { state.parentId = crumb.id; loadFiles(); }); fragment.append(button);
     });
+    container.replaceChildren(fragment);
   }
   function fileType(item) {
     if (item.type === 'folder') return ['folder', 'folder'];
     const mime = item.mime || ''; if (mime.startsWith('image/')) return ['image', 'image']; if (mime.startsWith('video/') || mime.startsWith('audio/')) return ['video', 'film']; if (/pdf|word|sheet|presentation|text|json|zip/.test(mime)) return ['document', 'doc']; return ['generic', 'file'];
   }
   function renderFiles() {
-    const list = $('#fileList'); list.className = `file-grid${state.view === 'list' ? ' is-list' : ''}`; list.replaceChildren();
+    // A DocumentFragment batches all inserts into a single reflow instead of one per card.
+    const list = $('#fileList'); list.className = `file-grid${state.view === 'list' ? ' is-list' : ''}`;
     const empty = $('#emptyState'); const hasItems = state.items.length > 0;
     empty.hidden = hasItems;
     if (!hasItems) {
+      list.replaceChildren();
       const searching = Boolean(state.query); $('#emptyTitle').textContent = searching ? t('noSearch') : t('emptyTitle'); $('#emptyDescription').textContent = searching ? t('noSearchDesc') : t('emptyDescription');
       $('#emptyUploadButton').hidden = searching || state.scope === 'trash'; return;
     }
-    state.items.forEach(item => list.append(createFileCard(item)));
+    const fragment = document.createDocumentFragment();
+    state.items.forEach(item => fragment.append(createFileCard(item)));
+    list.replaceChildren(fragment);
   }
   function createFileCard(item) {
     const card = el('article', 'file-card'); card.dataset.id = item.id; const [kind, symbol] = fileType(item);
@@ -148,17 +192,34 @@
   function openFolder(item) { state.scope = 'files'; state.parentId = item.id; state.query = ''; $('#searchInput').value = ''; loadFiles(); }
   function openItem(item) { if (item.type === 'folder') openFolder(item); else if (previewKind(item)) openPreview(item); else downloadItem(item); }
 
-  async function createFolder(name) { try { await api('/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parentId: state.parentId }) }); toast(t('folderCreated', { name }), 'success'); await loadFiles(); } catch (error) { notifyError(error); } }
-  async function mutateItem(item, operation, details = {}) { try { await api(`/files/${encodeURIComponent(item.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, ...details }) }); toast(operation === 'trash' ? t('movedToTrash') : operation === 'restore' ? t('restored') : t('renamed'), 'success'); await loadFiles(); } catch (error) { notifyError(error); } }
-  async function permanentlyDelete(item) { if (!window.confirm(t('confirmDelete', { name: item.name }))) return; try { await api(`/files/${encodeURIComponent(item.id)}`, { method: 'DELETE' }); toast(t('deleted'), 'success'); await loadFiles(); } catch (error) { notifyError(error); } }
+  async function createFolder(name) { try { await api('/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parentId: state.parentId }) }); toast(t('folderCreated', { name }), 'success'); await refreshFiles(); } catch (error) { notifyError(error); } }
+  async function mutateItem(item, operation, details = {}) { try { await api(`/files/${encodeURIComponent(item.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, ...details }) }); toast(operation === 'trash' ? t('movedToTrash') : operation === 'restore' ? t('restored') : t('renamed'), 'success'); await refreshFiles(); } catch (error) { notifyError(error); } }
+  async function permanentlyDelete(item) { if (!window.confirm(t('confirmDelete', { name: item.name }))) return; try { await api(`/files/${encodeURIComponent(item.id)}`, { method: 'DELETE' }); toast(t('deleted'), 'success'); await refreshFiles(); } catch (error) { notifyError(error); } }
   function openNewFolder() { openPrompt({ title: t('newFolderTitle'), label: t('newFolderLabel'), help: t('newFolderHelp'), submit: t('save'), value: '', onSubmit: createFolder }); }
   function openRename(item) { openPrompt({ title: t('renameTitle'), label: t('renameLabel'), help: '', submit: t('saveName'), value: item.name, onSubmit: name => mutateItem(item, 'rename', { name }) }); }
   function openPrompt({ title, label, help, submit, value, onSubmit }) { $('#promptTitle').textContent = title; $('#promptLabel').textContent = label; $('#promptHelp').textContent = help; $('#promptSubmit').textContent = submit; $('#promptInput').value = value; state.promptHandler = onSubmit; openModal('promptModal'); setTimeout(() => $('#promptInput').select(), 0); }
 
-  async function fetchItemBlob(item) {
-    const response = await fetch(`${API_URL}/files/${encodeURIComponent(item.id)}/content`, { headers: { 'X-Drive-Token': state.token } });
+  // ───────────────────────────────────────────────────────────────────────
+  // PREVIEW BUGFIX: the Worker/Render proxy chain often serves file bytes
+  // with a generic `Content-Type: application/octet-stream`. Browsers decide
+  // how to render an object URL in <img>/<video>/<audio> purely from the
+  // Blob's own `.type` — NOT from the response header or the file's name —
+  // so a mistyped Blob silently fails to render with no visible error. This
+  // is why preview appeared "completely broken": every non-text file was
+  // getting an untyped Blob. Re-tagging it here (cheaply, via Blob.slice,
+  // which does not copy the underlying bytes) fixes image/video/audio/text
+  // preview without touching the Worker or Render backend at all.
+  // ───────────────────────────────────────────────────────────────────────
+  function guessMimeFromName(name) { return EXT_MIME[fileExtension(name)] || ''; }
+  async function fetchItemBlob(item, signal) {
+    const response = await fetch(`${API_URL}/files/${encodeURIComponent(item.id)}/content`, { headers: { 'X-Drive-Token': state.token }, signal });
     if (!response.ok) { const data = await response.json().catch(() => ({})); const err = new Error(data.error || `HTTP ${response.status}`); err.status = response.status; throw err; }
-    return response.blob();
+    const rawBlob = await response.blob();
+    if (rawBlob.size === 0) { const err = new Error(t('previewTooBig')); err.status = 502; throw err; }
+    const serverMime = rawBlob.type && rawBlob.type !== 'application/octet-stream' ? rawBlob.type : '';
+    const storedMime = item.mime && item.mime !== 'application/octet-stream' ? item.mime : '';
+    const resolvedMime = serverMime || storedMime || guessMimeFromName(item.name) || 'application/octet-stream';
+    return rawBlob.type === resolvedMime ? rawBlob : rawBlob.slice(0, rawBlob.size, resolvedMime);
   }
   async function downloadItem(item) {
     toast(t('downloaded'), 'info');
@@ -172,93 +233,72 @@
     if (state.scope !== 'files') { state.scope = 'files'; state.parentId = null; toast(t('uploadingToRoot'), 'info'); }
     $('#uploadTray').hidden = false;
     for (const file of entries) await uploadFile(file);
-    await loadFiles();
+    await refreshFiles();
   }
-async function uploadFile(file) {
+
+  // Buffers rapid xhr.upload.onprogress ticks into a single DOM write per
+  // animation frame — CONCURRENCY=2 chunks firing progress events in lockstep
+  // would otherwise force a synchronous style/layout recalculation on every tick.
+  function scheduleProgressFlush(row, value, label) {
+    row._pendingProgress = { value, label };
+    if (row._rafScheduled) return;
+    row._rafScheduled = true;
+    requestAnimationFrame(() => { const pending = row._pendingProgress; row._rafScheduled = false; if (pending) setUploadProgress(row, pending.value, pending.label); });
+  }
+
+  async function uploadFile(file) {
     state.uploadingCount += 1;
     const row = createUploadRow(file);
     const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const parts = new Array(total);
     const chunkProgress = new Array(total).fill(0);
-    const CONCURRENCY = 2; // Tải 2 luồng song song
 
     const updateProgress = () => {
-      const sumProgress = chunkProgress.reduce((acc, p) => acc + p, 0);
-      const overallPercent = Math.round(sumProgress / total);
-      const completedCount = chunkProgress.filter(p => p === 100).length;
-      setUploadProgress(row, overallPercent, t('uploadingPart', { current: Math.min(completedCount + 1, total), total }));
+      const overallPercent = Math.round(chunkProgress.reduce((sum, value) => sum + value, 0) / total);
+      const completedCount = chunkProgress.filter(value => value === 100).length;
+      scheduleProgressFlush(row, overallPercent, t('uploadingPart', { current: Math.min(completedCount + 1, total), total }));
     };
 
     try {
-      for (let i = 0; i < total; i += CONCURRENCY) {
+      for (let start = 0; start < total; start += UPLOAD_CONCURRENCY) {
         const batch = [];
-        for (let j = 0; j < CONCURRENCY && (i + j) < total; j += 1) {
-          const index = i + j;
+        for (let offset = 0; offset < UPLOAD_CONCURRENCY && (start + offset) < total; offset += 1) {
+          const index = start + offset;
           const slice = file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE));
           const filename = `${file.name}.part-${String(index + 1).padStart(4, '0')}`;
-
-          const task = (async () => {
-            const part = await uploadChunkWithRetry(slice, filename, percent => {
-              chunkProgress[index] = percent;
-              updateProgress();
-            });
-            chunkProgress[index] = 100;
-            updateProgress();
-            parts[index] = {
-              fileId: part.telegram_file_id,
-              messageId: part.telegram_message_id,
-              size: part.size || slice.size,
-              index
-            };
-          })();
-          batch.push(task);
+          batch.push((async () => {
+            const part = await uploadChunkWithRetry(slice, filename, percent => { chunkProgress[index] = percent; updateProgress(); });
+            chunkProgress[index] = 100; updateProgress();
+            parts[index] = { fileId: part.telegram_file_id, messageId: part.telegram_message_id, size: part.size || slice.size, index };
+          })());
         }
-
-        // Đợi 2 luồng trong đợt này hoàn thành
         await Promise.all(batch);
-
-        // Nghỉ giữa các đợt để tránh bị Telegram dính 429 Rate Limit
-        if (i + CONCURRENCY < total) await sleep(INTER_CHUNK_DELAY_MS);
+        // Pace batches, not individual chunks, to stay under Telegram's flood-control threshold.
+        if (start + UPLOAD_CONCURRENCY < total) await sleep(INTER_CHUNK_DELAY_MS);
       }
 
-      await api('/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: file.name,
-          parentId: state.parentId,
-          mime: file.type || 'application/octet-stream',
-          size: file.size,
-          parts: parts.filter(Boolean)
-        })
-      });
-
-      setUploadProgress(row, 100, t('completed'));
-      row.classList.add('completed');
-      toast(t('uploadSuccess', { name: file.name }), 'success');
+      await api('/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: file.name, parentId: state.parentId, mime: file.type || 'application/octet-stream', size: file.size, parts: parts.filter(Boolean) }) });
+      setUploadProgress(row, 100, t('completed')); row.classList.add('completed'); toast(t('uploadSuccess', { name: file.name }), 'success');
     } catch (error) {
-      row.classList.add('error');
-      setUploadProgress(row, 100, error.message || t('requestFailed'));
+      row.classList.add('error'); setUploadProgress(row, 100, error.message || t('requestFailed'));
       await cleanupUploadedParts(parts.filter(Boolean));
       notifyError(error);
-    } finally {
-      state.uploadingCount -= 1;
-    }
+    } finally { state.uploadingCount -= 1; }
   }
   function createUploadRow(file) { const row = el('div', 'upload-row'); const name = el('span', 'upload-name', file.name); const status = el('div', 'upload-status'); const label = el('span', '', t('preparing')); const percentage = el('span', 'upload-percent', '0%'); status.append(label, percentage); const track = el('div', 'progress-track'); const fill = document.createElement('i'); track.append(fill); row.append(name, status, track); $('#uploadQueue').prepend(row); return row; }
   function setUploadProgress(row, value, label) { $('.progress-track i', row).style.width = `${Math.min(100, Math.max(0, value))}%`; $('.upload-percent', row).textContent = `${Math.round(value)}%`; $('.upload-status span', row).textContent = label; }
 
   // ───────────────────────────────────────────────────────────────────────
   // Upload retry: exponential backoff 2s → 4s → 8s → 16s → 32s (5 attempts).
-  // A Telegram flood-control response (HTTP 429, surfaced by the Worker as
-  // status 429) gets its own toast wording but follows the same backoff.
+  // A Telegram flood-control response (HTTP 429) gets its own toast wording
+  // but follows the same backoff. Retry toasts are deduplicated (see toast())
+  // so two concurrent chunks retrying at once don't spam the toast stack.
   // ───────────────────────────────────────────────────────────────────────
   async function uploadChunkWithRetry(blob, filename, onProgress) {
     let lastError;
     for (let attempt = 0; attempt <= MAX_RETRY; attempt += 1) {
-      try {
-        return await uploadChunkOnce(blob, filename, onProgress);
-      } catch (error) {
+      try { return await uploadChunkOnce(blob, filename, onProgress); }
+      catch (error) {
         lastError = error;
         if (attempt < MAX_RETRY) {
           const seconds = Math.round(RETRY_BASE_MS * 2 ** attempt / 1000);
@@ -286,8 +326,8 @@ async function uploadFile(file) {
   async function cleanupUploadedParts(parts) { await Promise.allSettled(parts.map(part => api('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: part.messageId }) }))); }
 
   // ───────────────────────────────────────────────────────────────────────
-  // 4) Rich preview modal — built entirely in JS so no index.html edit is
-  //    required. Supports images, video, audio, and text/code files.
+  // Rich preview modal — built entirely in JS so no index.html edit is
+  // required. Supports images, video, audio, and text/code files.
   // ───────────────────────────────────────────────────────────────────────
   const PREVIEW_EXTENSIONS = {
     image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
@@ -295,7 +335,6 @@ async function uploadFile(file) {
     audio: ['mp3', 'wav', 'ogg', 'flac'],
     text: ['txt', 'json', 'js', 'py', 'cpp', 'html', 'css', 'md', 'log']
   };
-  function fileExtension(name) { const match = /\.([a-z0-9]+)$/i.exec(name || ''); return match ? match[1].toLowerCase() : ''; }
   function previewKind(item) {
     if (!item || item.type !== 'file') return null;
     const mime = item.mime || ''; const ext = fileExtension(item.name);
@@ -305,7 +344,7 @@ async function uploadFile(file) {
     if (mime.startsWith('text/') || PREVIEW_EXTENSIONS.text.includes(ext)) return 'text';
     return null;
   }
-  let previewModalEl = null; let previewObjectUrl = null;
+  let previewModalEl = null; let previewObjectUrl = null; let previewAbortController = null;
   function buildPreviewModal() {
     const backdrop = el('div', 'modal-backdrop'); backdrop.id = 'previewModal'; backdrop.hidden = true;
     backdrop.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:1000;';
@@ -326,42 +365,72 @@ async function uploadFile(file) {
   function closePreview() {
     const modal = ensurePreviewModal(); modal.hidden = true;
     $('#previewBody', modal).replaceChildren(); releasePreviewObjectUrl();
+    previewAbortController?.abort(); previewAbortController = null; // Stop an in-flight fetch if the user closes early.
+  }
+  function buildTextPreview(text, extension) {
+    const container = el('div'); container.style.cssText = 'width:100%;display:flex;flex-direction:column;max-height:78vh;';
+    const toolbar = el('div'); toolbar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(120,120,120,.15);font-size:12px;';
+    const badge = el('span', '', LANGUAGE_LABEL[extension] || (extension ? extension.toUpperCase() : 'Text')); badge.style.cssText = 'opacity:.6;text-transform:uppercase;letter-spacing:.05em;';
+    const copyButton = el('button', '', t('copy')); copyButton.type = 'button'; copyButton.style.cssText = 'border:none;background:transparent;cursor:pointer;color:inherit;opacity:.75;font:inherit;';
+    copyButton.addEventListener('click', async () => { try { await navigator.clipboard.writeText(text); copyButton.textContent = t('copied'); setTimeout(() => { copyButton.textContent = t('copy'); }, 1_500); } catch { /* Clipboard API unavailable (e.g. insecure context) — non-fatal. */ } });
+    toolbar.append(badge, copyButton); container.append(toolbar);
+
+    const lines = text.split('\n');
+    const codeArea = el('div'); codeArea.style.cssText = 'overflow:auto;flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.6;';
+    if (lines.length <= TEXT_PREVIEW_LINE_LIMIT) {
+      // <ol> gives free, cheap line numbering via native list rendering — no per-line JS math.
+      const ol = document.createElement('ol'); ol.style.cssText = 'margin:0;padding:14px 18px 14px 3.4em;white-space:pre-wrap;word-break:break-word;';
+      const fragment = document.createDocumentFragment(); lines.forEach(lineText => { const li = document.createElement('li'); li.textContent = lineText; fragment.append(li); });
+      ol.append(fragment); codeArea.append(ol);
+    } else {
+      const notice = el('p', '', t('truncatedNotice')); notice.style.cssText = 'margin:0;padding:8px 16px;font-size:12px;opacity:.65;';
+      const pre = el('pre'); pre.style.cssText = 'margin:0;padding:0 18px 18px;white-space:pre-wrap;word-break:break-word;';
+      pre.append(el('code', '', text)); codeArea.append(notice, pre);
+    }
+    container.append(codeArea);
+    return container;
   }
   async function openPreview(item) {
     const kind = previewKind(item); if (!kind) { downloadItem(item); return; }
+    previewAbortController?.abort(); const controller = new AbortController(); previewAbortController = controller;
     const modal = ensurePreviewModal(); const body = $('#previewBody', modal); const title = $('#previewTitle', modal);
     title.textContent = item.name; body.replaceChildren(el('p', '', t('loadingPreview'))); modal.hidden = false; releasePreviewObjectUrl();
     try {
       if (kind === 'text') {
-        const blob = await fetchItemBlob(item); const text = await blob.text();
-        const pre = el('pre'); pre.style.cssText = 'margin:0;padding:18px;max-height:78vh;overflow:auto;width:100%;box-sizing:border-box;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;';
-        const code = el('code', '', text); pre.append(code); body.replaceChildren(pre);
+        const blob = await fetchItemBlob(item, controller.signal); const text = await blob.text();
+        body.replaceChildren(buildTextPreview(text, fileExtension(item.name)));
         return;
       }
-      const blob = await fetchItemBlob(item); previewObjectUrl = URL.createObjectURL(blob);
+      const blob = await fetchItemBlob(item, controller.signal); previewObjectUrl = URL.createObjectURL(blob);
       let media;
       if (kind === 'image') { media = document.createElement('img'); media.alt = item.name; media.style.cssText = 'max-width:100%;max-height:78vh;display:block;object-fit:contain;'; }
       else if (kind === 'video') { media = document.createElement('video'); media.controls = true; media.autoplay = false; media.style.cssText = 'max-width:100%;max-height:78vh;display:block;background:#000;'; }
       else { media = document.createElement('audio'); media.controls = true; media.style.cssText = 'width:100%;padding:32px;'; }
+      media.addEventListener('error', () => { body.replaceChildren(el('p', '', t('previewFailed'))); });
       media.src = previewObjectUrl; body.replaceChildren(media);
     } catch (error) {
+      if (error.name === 'AbortError') return; // Superseded by a newer preview or the modal was closed.
       body.replaceChildren(el('p', '', error.status === 401 ? t('wrongPassword') : t('previewFailed')));
       if (error.status === 401) handleExpiredSession();
     }
   }
 
-  function toast(message, type = 'info') { const entry = el('div', `toast ${type}`); entry.append(icon(type === 'success' ? 'drive' : type === 'error' ? 'close' : 'files'), el('p', '', message)); $('#toastStack').append(entry); setTimeout(() => { entry.style.opacity = '0'; entry.style.transform = 'translateY(-8px)'; setTimeout(() => entry.remove(), 220); }, 4_200); }
+  // Deduplicates identical toasts fired in quick succession (e.g. two
+  // concurrently-retrying chunks hitting the same error at nearly the same time).
+  let lastToastKey = ''; let lastToastAt = 0;
+  function toast(message, type = 'info') {
+    const key = `${type}:${message}`; const now = Date.now();
+    if (key === lastToastKey && now - lastToastAt < 1_200) return;
+    lastToastKey = key; lastToastAt = now;
+    const entry = el('div', `toast ${type}`); entry.append(icon(type === 'success' ? 'drive' : type === 'error' ? 'close' : 'files'), el('p', '', message)); $('#toastStack').append(entry);
+    setTimeout(() => { entry.style.opacity = '0'; entry.style.transform = 'translateY(-8px)'; setTimeout(() => entry.remove(), 220); }, 4_200);
+  }
   function notifyError(error) { if (error.status === 401) { handleExpiredSession(); return; } toast(error.message === 'Failed to fetch' ? t('networkError') : error.message || t('requestFailed'), 'error'); }
   function openModal(id) { $(`#${id}`).hidden = false; } function closeModal(id) { $(`#${id}`).hidden = true; }
   function showLogin() { const passwordField = $('#password'); if (passwordField) passwordField.value = ''; $('#loginModal').hidden = false; passwordField?.focus(); }
-  function handleExpiredSession() { sessionStorage.removeItem(KEYS.token); state.token = ''; showLogin(); toast(t('wrongPassword'), 'error'); }
-  function signOut() { if (!window.confirm(t('confirmSignOut'))) return; sessionStorage.removeItem(KEYS.token); state.token = ''; showLogin(); }
+  function handleExpiredSession() { sessionStorage.removeItem(KEYS.token); state.token = ''; clearListCache(); showLogin(); toast(t('wrongPassword'), 'error'); }
+  function signOut() { if (!window.confirm(t('confirmSignOut'))) return; sessionStorage.removeItem(KEYS.token); state.token = ''; clearListCache(); showLogin(); }
 
-  // ───────────────────────────────────────────────────────────────────────
-  // 2) Fully hides any Worker-URL configuration surface left over in
-  //    index.html (login URL field, Settings button/modal) — the app now
-  //    only asks for the password, never a Worker address.
-  // ───────────────────────────────────────────────────────────────────────
   function hideWorkerUrlConfig() {
     const apiUrlField = $('#apiUrl'); if (apiUrlField) { const label = apiUrlField.closest('label') || apiUrlField.previousElementSibling; if (label && label.tagName === 'LABEL') label.hidden = true; apiUrlField.hidden = true; apiUrlField.removeAttribute('required'); }
     $('#settingsButton')?.setAttribute('hidden', 'hidden');
