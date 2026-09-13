@@ -174,23 +174,76 @@
     for (const file of entries) await uploadFile(file);
     await loadFiles();
   }
-  async function uploadFile(file) {
-    state.uploadingCount += 1; const row = createUploadRow(file); const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE)); const parts = [];
+async function uploadFile(file) {
+    state.uploadingCount += 1;
+    const row = createUploadRow(file);
+    const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+    const parts = new Array(total);
+    const chunkProgress = new Array(total).fill(0);
+    const CONCURRENCY = 2; // Tải 2 luồng song song
+
+    const updateProgress = () => {
+      const sumProgress = chunkProgress.reduce((acc, p) => acc + p, 0);
+      const overallPercent = Math.round(sumProgress / total);
+      const completedCount = chunkProgress.filter(p => p === 100).length;
+      setUploadProgress(row, overallPercent, t('uploadingPart', { current: Math.min(completedCount + 1, total), total }));
+    };
+
     try {
-      for (let index = 0; index < total; index += 1) {
-        setUploadProgress(row, Math.round(index / total * 100), t('uploadingPart', { current: index + 1, total }));
-        const slice = file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE));
-        const part = await uploadChunkWithRetry(slice, `${file.name}.part-${String(index + 1).padStart(4, '0')}`, percent => setUploadProgress(row, Math.round((index + percent / 100) / total * 100), t('uploadingPart', { current: index + 1, total })));
-        parts.push({ fileId: part.telegram_file_id, messageId: part.telegram_message_id, size: part.size || slice.size, index });
-        // Pace requests to stay under Telegram's flood-control threshold — skip the wait after the very last part.
-        if (index < total - 1) await sleep(INTER_CHUNK_DELAY_MS);
+      for (let i = 0; i < total; i += CONCURRENCY) {
+        const batch = [];
+        for (let j = 0; j < CONCURRENCY && (i + j) < total; j += 1) {
+          const index = i + j;
+          const slice = file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE));
+          const filename = `${file.name}.part-${String(index + 1).padStart(4, '0')}`;
+
+          const task = (async () => {
+            const part = await uploadChunkWithRetry(slice, filename, percent => {
+              chunkProgress[index] = percent;
+              updateProgress();
+            });
+            chunkProgress[index] = 100;
+            updateProgress();
+            parts[index] = {
+              fileId: part.telegram_file_id,
+              messageId: part.telegram_message_id,
+              size: part.size || slice.size,
+              index
+            };
+          })();
+          batch.push(task);
+        }
+
+        // Đợi 2 luồng trong đợt này hoàn thành
+        await Promise.all(batch);
+
+        // Nghỉ giữa các đợt để tránh bị Telegram dính 429 Rate Limit
+        if (i + CONCURRENCY < total) await sleep(INTER_CHUNK_DELAY_MS);
       }
-      await api('/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: file.name, parentId: state.parentId, mime: file.type || 'application/octet-stream', size: file.size, parts }) });
-      setUploadProgress(row, 100, t('completed')); row.classList.add('completed'); toast(t('uploadSuccess', { name: file.name }), 'success');
+
+      await api('/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: file.name,
+          parentId: state.parentId,
+          mime: file.type || 'application/octet-stream',
+          size: file.size,
+          parts: parts.filter(Boolean)
+        })
+      });
+
+      setUploadProgress(row, 100, t('completed'));
+      row.classList.add('completed');
+      toast(t('uploadSuccess', { name: file.name }), 'success');
     } catch (error) {
-      row.classList.add('error'); setUploadProgress(row, 100, error.message || t('requestFailed')); await cleanupUploadedParts(parts);
+      row.classList.add('error');
+      setUploadProgress(row, 100, error.message || t('requestFailed'));
+      await cleanupUploadedParts(parts.filter(Boolean));
       notifyError(error);
-    } finally { state.uploadingCount -= 1; }
+    } finally {
+      state.uploadingCount -= 1;
+    }
   }
   function createUploadRow(file) { const row = el('div', 'upload-row'); const name = el('span', 'upload-name', file.name); const status = el('div', 'upload-status'); const label = el('span', '', t('preparing')); const percentage = el('span', 'upload-percent', '0%'); status.append(label, percentage); const track = el('div', 'progress-track'); const fill = document.createElement('i'); track.append(fill); row.append(name, status, track); $('#uploadQueue').prepend(row); return row; }
   function setUploadProgress(row, value, label) { $('.progress-track i', row).style.width = `${Math.min(100, Math.max(0, value))}%`; $('.upload-percent', row).textContent = `${Math.round(value)}%`; $('.upload-status span', row).textContent = label; }
