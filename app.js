@@ -3,12 +3,17 @@
   'use strict';
 
   // ───────────────────────────────────────────────────────────────────────
-  // FIXED WORKER — the app always talks to this single Worker; it proxies
-  // file bytes to the Render backend internally (bypassing Telegram Bot
-  // API's 20 MB download / 50 MB upload ceilings). app.js never calls
-  // Render directly, so no URL config is ever exposed in the UI.
+  // CONTROL PLANE vs DATA PLANE
+  //   API_URL    (Cloudflare Worker) — auth/token, folder+file metadata (KV).
+  //               Never touches raw file bytes anymore.
+  //   RENDER_URL (Render backend)    — accepts chunk uploads and serves
+  //               download/stream/preview bytes directly, bypassing the
+  //               Worker entirely so it no longer bottlenecks on Cloudflare's
+  //               CPU/RAM/30s-timeout limits for large file transfers.
+  // Neither URL is ever exposed as a config field in the UI.
   // ───────────────────────────────────────────────────────────────────────
   const API_URL = 'https://drive-worker.phamdatt140613.workers.dev';
+  const RENDER_URL = 'https://teledrive-backend-jwy5.onrender.com';
 
   const CHUNK_SIZE = 50 * 1024 * 1024;
   const UPLOAD_CONCURRENCY = 2;          // Two parallel chunk uploads per file.
@@ -24,15 +29,6 @@
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Extension → MIME fallback. Used only when both the server's Content-Type
-  // and the item's stored mime are missing/generic — see fetchItemBlob().
-  const EXT_MIME = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
-    mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
-    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
-    txt: 'text/plain', json: 'application/json', js: 'text/javascript', py: 'text/x-python', cpp: 'text/x-c++src',
-    html: 'text/html', css: 'text/css', md: 'text/markdown', log: 'text/plain'
-  };
   const LANGUAGE_LABEL = { js: 'JavaScript', py: 'Python', cpp: 'C++', html: 'HTML', css: 'CSS', json: 'JSON', md: 'Markdown', log: 'Log', txt: 'Text' };
 
   const COPY = {
@@ -200,26 +196,55 @@
   function openPrompt({ title, label, help, submit, value, onSubmit }) { $('#promptTitle').textContent = title; $('#promptLabel').textContent = label; $('#promptHelp').textContent = help; $('#promptSubmit').textContent = submit; $('#promptInput').value = value; state.promptHandler = onSubmit; openModal('promptModal'); setTimeout(() => $('#promptInput').select(), 0); }
 
   // ───────────────────────────────────────────────────────────────────────
-  // PREVIEW BUGFIX: the Worker/Render proxy chain often serves file bytes
-  // with a generic `Content-Type: application/octet-stream`. Browsers decide
-  // how to render an object URL in <img>/<video>/<audio> purely from the
-  // Blob's own `.type` — NOT from the response header or the file's name —
-  // so a mistyped Blob silently fails to render with no visible error. This
-  // is why preview appeared "completely broken": every non-text file was
-  // getting an untyped Blob. Re-tagging it here (cheaply, via Blob.slice,
-  // which does not copy the underlying bytes) fixes image/video/audio/text
-  // preview without touching the Worker or Render backend at all.
+  // DATA PLANE ACCESS — every byte-serving call (stream, preview, download)
+  // goes straight to Render, never through the Worker. Render's /file/:id
+  // route expects a real Telegram file id, NOT the item's KV key — a file
+  // is stored as one Telegram message per uploaded part (item.parts[]), so
+  // item.id (the Cloudflare KV record key) is never a valid Render lookup.
+  //   - <img>/<video>/<audio> get their `src` set directly to the FIRST
+  //     part's Telegram file id (renderStreamUrl()) — the browser issues its
+  //     own Range requests, so nothing is buffered as a Blob. This only
+  //     streams the first part: fine for the vast majority of previews
+  //     (most media fits in one 50MB part), but a video/audio file split
+  //     across multiple parts will only play its first part this way.
+  //   - Text preview and forced "Save As" downloads need the COMPLETE file
+  //     in hand (to read as text, or to force a filename cross-origin, since
+  //     the `download` attribute on an <a> is ignored for cross-origin URLs).
+  //     fetchItemBlob() fetches every part in item.parts (bounded concurrency,
+  //     original order) and reassembles them into a single Blob.
   // ───────────────────────────────────────────────────────────────────────
-  function guessMimeFromName(name) { return EXT_MIME[fileExtension(name)] || ''; }
-  async function fetchItemBlob(item, signal) {
-    const response = await fetch(`${API_URL}/files/${encodeURIComponent(item.id)}/content`, { headers: { 'X-Drive-Token': state.token }, signal });
+  function orderedParts(item) { return Array.isArray(item.parts) && item.parts.length ? [...item.parts].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)) : null; }
+  function primaryFileId(item) { return orderedParts(item)?.[0]?.fileId || item.telegram_file_id || item.id; }
+  function renderPartUrl(fileId) { return `${RENDER_URL}/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(state.token)}`; }
+  function renderStreamUrl(item) { return renderPartUrl(primaryFileId(item)); }
+
+  async function fetchRenderPart(fileId, signal) {
+    const response = await fetch(renderPartUrl(fileId), { headers: { 'X-Drive-Token': state.token }, signal });
     if (!response.ok) { const data = await response.json().catch(() => ({})); const err = new Error(data.error || `HTTP ${response.status}`); err.status = response.status; throw err; }
-    const rawBlob = await response.blob();
-    if (rawBlob.size === 0) { const err = new Error(t('previewTooBig')); err.status = 502; throw err; }
-    const serverMime = rawBlob.type && rawBlob.type !== 'application/octet-stream' ? rawBlob.type : '';
-    const storedMime = item.mime && item.mime !== 'application/octet-stream' ? item.mime : '';
-    const resolvedMime = serverMime || storedMime || guessMimeFromName(item.name) || 'application/octet-stream';
-    return rawBlob.type === resolvedMime ? rawBlob : rawBlob.slice(0, rawBlob.size, resolvedMime);
+    const blob = await response.blob();
+    if (blob.size === 0) { const err = new Error(t('previewTooBig')); err.status = 502; throw err; }
+    return blob;
+  }
+  // Fetches every part with at most UPLOAD_CONCURRENCY requests in flight at
+  // once, but preserves original part order in the returned array regardless
+  // of which request finishes first.
+  async function fetchPartsInOrder(parts, signal) {
+    const blobs = new Array(parts.length);
+    let cursor = 0;
+    async function worker() {
+      while (cursor < parts.length) {
+        const index = cursor++;
+        blobs[index] = await fetchRenderPart(parts[index].fileId, signal);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, parts.length) }, worker));
+    return blobs;
+  }
+  async function fetchItemBlob(item, signal) {
+    const parts = orderedParts(item);
+    if (!parts || parts.length <= 1) return fetchRenderPart(primaryFileId(item), signal);
+    const blobs = await fetchPartsInOrder(parts, signal);
+    return new Blob(blobs, { type: item.mime || 'application/octet-stream' });
   }
   async function downloadItem(item) {
     toast(t('downloaded'), 'info');
@@ -309,10 +334,11 @@
     }
     throw lastError;
   }
+  // Chunks go straight to Render (Data Plane) — the Worker never sees the bytes.
   function uploadChunkOnce(blob, filename, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest(); const form = new FormData(); form.append('file', blob, filename); form.append('filename', filename);
-      xhr.open('POST', `${API_URL}/upload`); xhr.setRequestHeader('X-Drive-Token', state.token);
+      xhr.open('POST', `${RENDER_URL}/upload`); xhr.setRequestHeader('X-Drive-Token', state.token);
       xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(event.loaded / event.total * 100); };
       xhr.onerror = () => reject(new Error(t('networkError')));
       xhr.onload = () => {
@@ -323,7 +349,11 @@
       xhr.send(form);
     });
   }
-  async function cleanupUploadedParts(parts) { await Promise.allSettled(parts.map(part => api('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: part.messageId }) }))); }
+  // Rolling back a failed multi-chunk upload deletes the already-sent Telegram
+  // messages — this is Data Plane cleanup, so it targets Render, not the Worker.
+  async function cleanupUploadedParts(parts) {
+    await Promise.allSettled(parts.map(part => fetch(`${RENDER_URL}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Drive-Token': state.token }, body: JSON.stringify({ message_id: part.messageId }) }).catch(() => {})));
+  }
 
   // ───────────────────────────────────────────────────────────────────────
   // Rich preview modal — built entirely in JS so no index.html edit is
@@ -344,7 +374,7 @@
     if (mime.startsWith('text/') || PREVIEW_EXTENSIONS.text.includes(ext)) return 'text';
     return null;
   }
-  let previewModalEl = null; let previewObjectUrl = null; let previewAbortController = null;
+  let previewModalEl = null; let previewAbortController = null;
   function buildPreviewModal() {
     const backdrop = el('div', 'modal-backdrop'); backdrop.id = 'previewModal'; backdrop.hidden = true;
     backdrop.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:1000;';
@@ -361,11 +391,17 @@
     return backdrop;
   }
   function ensurePreviewModal() { if (!previewModalEl) previewModalEl = buildPreviewModal(); return previewModalEl; }
-  function releasePreviewObjectUrl() { if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; } }
+  // No Blob is created for image/video/audio anymore (they stream via direct
+  // `src`), so "releasing memory" means stopping the element's network
+  // activity — pause + clear src + load() — before it's removed from the DOM.
+  // Some browsers (notably Safari) keep buffering an orphaned <video>/<audio>
+  // otherwise, wasting bandwidth after the modal is closed.
   function closePreview() {
-    const modal = ensurePreviewModal(); modal.hidden = true;
-    $('#previewBody', modal).replaceChildren(); releasePreviewObjectUrl();
-    previewAbortController?.abort(); previewAbortController = null; // Stop an in-flight fetch if the user closes early.
+    const modal = ensurePreviewModal(); const body = $('#previewBody', modal);
+    const activeMedia = $('video, audio', body);
+    if (activeMedia) { activeMedia.pause(); activeMedia.removeAttribute('src'); activeMedia.load(); }
+    modal.hidden = true; body.replaceChildren();
+    previewAbortController?.abort(); previewAbortController = null; // Stops the text-preview fetch if still in flight.
   }
   function buildTextPreview(text, extension) {
     const container = el('div'); container.style.cssText = 'width:100%;display:flex;flex-direction:column;max-height:78vh;';
@@ -394,25 +430,30 @@
     const kind = previewKind(item); if (!kind) { downloadItem(item); return; }
     previewAbortController?.abort(); const controller = new AbortController(); previewAbortController = controller;
     const modal = ensurePreviewModal(); const body = $('#previewBody', modal); const title = $('#previewTitle', modal);
-    title.textContent = item.name; body.replaceChildren(el('p', '', t('loadingPreview'))); modal.hidden = false; releasePreviewObjectUrl();
-    try {
-      if (kind === 'text') {
+    title.textContent = item.name; body.replaceChildren(el('p', '', t('loadingPreview'))); modal.hidden = false;
+
+    if (kind === 'text') {
+      try {
         const blob = await fetchItemBlob(item, controller.signal); const text = await blob.text();
         body.replaceChildren(buildTextPreview(text, fileExtension(item.name)));
-        return;
+      } catch (error) {
+        if (error.name === 'AbortError') return; // Superseded by a newer preview or the modal was closed.
+        body.replaceChildren(el('p', '', error.status === 401 ? t('wrongPassword') : t('previewFailed')));
+        if (error.status === 401) handleExpiredSession();
       }
-      const blob = await fetchItemBlob(item, controller.signal); previewObjectUrl = URL.createObjectURL(blob);
-      let media;
-      if (kind === 'image') { media = document.createElement('img'); media.alt = item.name; media.style.cssText = 'max-width:100%;max-height:78vh;display:block;object-fit:contain;'; }
-      else if (kind === 'video') { media = document.createElement('video'); media.controls = true; media.autoplay = false; media.style.cssText = 'max-width:100%;max-height:78vh;display:block;background:#000;'; }
-      else { media = document.createElement('audio'); media.controls = true; media.style.cssText = 'width:100%;padding:32px;'; }
-      media.addEventListener('error', () => { body.replaceChildren(el('p', '', t('previewFailed'))); });
-      media.src = previewObjectUrl; body.replaceChildren(media);
-    } catch (error) {
-      if (error.name === 'AbortError') return; // Superseded by a newer preview or the modal was closed.
-      body.replaceChildren(el('p', '', error.status === 401 ? t('wrongPassword') : t('previewFailed')));
-      if (error.status === 401) handleExpiredSession();
+      return;
     }
+
+    // Image/video/audio stream straight from Render via a plain `src` — the
+    // browser issues its own (Range-aware, for video/audio) GET requests, so
+    // seeking works natively and nothing is held in memory as a Blob.
+    let media;
+    if (kind === 'image') { media = document.createElement('img'); media.alt = item.name; media.style.cssText = 'max-width:100%;max-height:78vh;display:block;object-fit:contain;'; }
+    else if (kind === 'video') { media = document.createElement('video'); media.controls = true; media.autoplay = false; media.style.cssText = 'max-width:100%;max-height:78vh;display:block;background:#000;'; }
+    else { media = document.createElement('audio'); media.controls = true; media.style.cssText = 'width:100%;padding:32px;'; }
+    media.addEventListener('error', () => { body.replaceChildren(el('p', '', t('previewFailed'))); });
+    media.src = renderStreamUrl(item);
+    body.replaceChildren(media);
   }
 
   // Deduplicates identical toasts fired in quick succession (e.g. two
